@@ -21,5 +21,3 @@ CREATE TABLE Projetos
     dataultimo              DATE,
     situacao                VARCHAR(255)
 );
-
-select* from Projetos

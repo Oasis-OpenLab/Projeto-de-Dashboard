@@ -21,7 +21,7 @@ column_map = {
     "Situação": "situacao"
 }
 
-csv_file_path = 'camara_50_2015_IAeInt.xlsx - proposicoes_camara_resumo (2).csv'
+csv_file_path = './projetos_em_csv/2022.csv'
 
 with open(csv_file_path, mode='r', encoding='utf-8') as csvfile:
     reader = csv.reader(csvfile)
