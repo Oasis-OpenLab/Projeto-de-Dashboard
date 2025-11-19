@@ -11,6 +11,9 @@ O projeto tem como objetivo importar das API's da Câmara dos Deputados e do Sen
 
 ## Como rodar o código
 python acess_api.py
+
 ~ cria o banco no computador usando create_database.sql ~
+
 python insert_data.py
+
 streamlit run dashboard.py
