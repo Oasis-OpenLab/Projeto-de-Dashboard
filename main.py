@@ -4,45 +4,67 @@ import shutil
 import mysql.connector
 import sys
 
-# --- CONFIGURAÇÃO DO BANCO DE DADOS (PARA RODAR O ARQUIVO .SQL) ---
+# --- CONFIGURAÇÃO GLOBAL DE CAMINHOS ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# --- CONFIGURAÇÃO DO BANCO DE DADOS ---
 DB_HOST = "localhost"
 DB_USER = "root"
-DB_PASSWORD = "dudu2004"  
+DB_PASSWORD = "dudu2004"
+
+def obter_caminho(nome_arquivo):
+    """Retorna o caminho completo compatível com o sistema operacional"""
+    return os.path.join(BASE_DIR, nome_arquivo)
+
+def garantir_estrutura_pastas():
+    """Verifica e cria as pastas necessárias para o projeto rodar"""
+    print("\n>>> [0/4] Verificando estrutura de pastas...")
+    
+    pasta_csv = obter_caminho("projetos_em_csv")
+    
+    if not os.path.exists(pasta_csv):
+        try:
+            os.makedirs(pasta_csv)
+            print(f"Pasta criada: {pasta_csv}")
+        except OSError as e:
+            print(f"Erro ao criar pasta: {e}")
+    else:
+        print(f"Pasta já existe: {pasta_csv}")
 
 def executar_api():
     print("\n>>> [1/4] Coletando dados da API (acess_api.py)...")
-    # Roda a coleta
-    subprocess.run([sys.executable, "acess_api.py"], check=True)
     
-    # CORREÇÃO DE CAMINHO:
-    # O api salva na raiz, mas o insert procura na pasta 'projetos_em_csv'
-    arquivo_gerado = "proposicoes_camara_resumo.csv"
-    pasta_destino = "projetos_em_csv"
+    script_path = obter_caminho("acess_api.py")
+    
+    subprocess.run([sys.executable, script_path], check=True, cwd=BASE_DIR)
+    
+    # Movimentação do arquivo
+    arquivo_gerado = obter_caminho("proposicoes_camara_resumo.csv")
+    pasta_destino = obter_caminho("projetos_em_csv")
+    destino_final = os.path.join(pasta_destino, "proposicoes_camara_resumo.csv")
     
     if os.path.exists(arquivo_gerado):
-        if not os.path.exists(pasta_destino):
-            os.makedirs(pasta_destino)
-            print(f"Pasta '{pasta_destino}' criada.")
-            
-        destino_final = os.path.join(pasta_destino, arquivo_gerado)
-        # Move e substitui se já existir
+        # Remove versão antiga se existir para evitar conflito
+        if os.path.exists(destino_final):
+            os.remove(destino_final)
+
         shutil.move(arquivo_gerado, destino_final)
         print(f"Arquivo CSV movido para: {destino_final}")
     else:
-        print("AVISO: O arquivo CSV não foi gerado pela API.")
+        print("AVISO: O arquivo CSV não foi gerado pela API (ou foi salvo em outro lugar).")
 
 def recriar_banco():
     print("\n>>> [2/4] Recriando Banco de Dados (create_database.sql)...")
     
-    # Lendo o arquivo SQL
-    if not os.path.exists("create_database.sql"):
-        print("Erro: create_database.sql não encontrado.")
+    arquivo_sql = obter_caminho("create_database.sql")
+
+    if not os.path.exists(arquivo_sql):
+        print(f"Erro: Arquivo não encontrado: {arquivo_sql}")
         return
 
-    with open("create_database.sql", "r", encoding="utf-8") as f:
+    with open(arquivo_sql, "r", encoding="utf-8") as f:
         sql_script = f.read()
 
-    # Conectando ao MySQL
     try:
         cnx = mysql.connector.connect(
             host=DB_HOST,
@@ -54,12 +76,10 @@ def recriar_banco():
         commands = sql_script.split(';')
         
         for command in commands:
-            # Pula comandos vazios (ex: linhas em branco no final do arquivo)
             if command.strip():
                 try:
                     cursor.execute(command)
                 except mysql.connector.Error as err:
-                    # Ignora erros de "Drop database" se ela não existir
                     if err.errno == 1008: 
                         pass
                     else:
@@ -72,34 +92,40 @@ def recriar_banco():
         print("Banco de dados 'Oasis' recriado com sucesso.")
     except mysql.connector.Error as err:
         print(f"Erro crítico no banco: {err}")
-        print("DICA: Verifique se a senha no main.py está igual à do seu MySQL.")
         sys.exit(1)
 
 def inserir_dados():
     print("\n>>> [3/4] Inserindo dados no SQL (insert_data.py)...")
+    script_path = obter_caminho("insert_data.py")
+    
     try:
-        subprocess.run([sys.executable, "insert_data.py"], check=True)
+        subprocess.run([sys.executable, script_path], check=True, cwd=BASE_DIR)
     except subprocess.CalledProcessError:
-        print("Erro ao inserir dados. Verifique se a senha no arquivo 'insert_data.py' está correta.")
+        print("Erro ao inserir dados. Verifique a senha ou o código.")
         sys.exit(1)
 
 def abrir_dashboard():
     print("\n>>> [4/4] Iniciando Dashboard (Streamlit)...")
     print("Pressione Ctrl+C no terminal para encerrar o servidor.")
-    # Streamlit roda com um comando diferente do Python normal
-    subprocess.run(["streamlit", "run", "dashboard.py"], check=True)
+    
+    dashboard_path = obter_caminho("dashboard.py")
+    subprocess.run([sys.executable, "-m", "streamlit", "run", dashboard_path], check=True, cwd=BASE_DIR)
 
 if __name__ == "__main__":
-    print("--- INICIANDO PIPELINE DE DADOS OASIS ---")
+    print(f"--- INICIANDO PIPELINE DE DADOS OASIS ---")
+    print(f"Diretório base: {BASE_DIR}")
     
-    # 1. Coleta e Organiza Arquivos
+    # 0. Garante que a pasta existe antes de tudo
+    garantir_estrutura_pastas()
+    
+    # 1. Coleta
     executar_api()
     
-    # 2. Prepara o Banco (Reset)
+    # 2. Banco
     recriar_banco()
     
-    # 3. Popula o Banco
+    # 3. Inserção
     inserir_dados()
     
-    # 4. Visualiza
+    # 4. Dashboard
     abrir_dashboard()
