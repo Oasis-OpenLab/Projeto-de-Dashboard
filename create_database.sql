@@ -22,4 +22,3 @@ CREATE TABLE Projetos
     situacao                VARCHAR(255)
 );
 
-select* from Projetos
