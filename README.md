@@ -1,17 +1,5 @@
 # Projeto-de-Dashboard
-O projeto tem como objetivo importar das API's da Câmara dos Deputados e do Senado os projetos de lei que falem sobre inteligências artificiais e tecnologias algorítmicas, e seus respectivos impactos na educação e na sociedade como um todo.
-
-## Arquivos
-- **_acess_api.py_**: Faz acesso a API (atualmente somente da Câmara) e retorna PL's, PLP's e PEC's, que tenham similiaridade semântica determinada com uma frase escolhida (como "Projetos de lei sobre IA's"), em formato json, e salva em arquivos CSV para serem analisados;
-- **_create_database.sql_**: Cria um banco de dados em SQL para armazenar os projetos de lei;
-- **_insert_data.py_**: Lê as linhas do CSV e salva como instâncias do banco criado, populando-o;
-- **_dashboard.py_**: cria o dashboard usando as informações armazenadas no bando dde dados SQL;
-- **_main.py_**: arquivo main, organiza a execução em sequencia de todos os arquivos necessários para o funcionamento do dashboard;
-- **_requirements.txt_**: Arquivo que contém todas as bibliotecas necessárias para rodar o código;
-- Outros arquivos serão gerados durante a execução do código
-## Pastas
-- **_projetos_em_csv_**: Pasta para armazenar os CSVs gerados pelo acesso_api.py
-(caso a pasta "projetos_em_csv" não exista, a main.py criará ela automaticamente)  
+O projeto é uma ferramenta de pesquisa de projetos de lei. Nosso principal objetivo é importar da Câmara dos Deputados e do Senado os projetos de lei que falem sobre inteligências artificiais e tecnologias algorítmicas, e seus respectivos impactos na educação e na sociedade como um todo, através de gráficos, rankings e listas. O tema de pesquisa pode ser alterado.
 
 ## Como Usar o Dashboard pela Primeira Vez
 Para utilizar o Dashboard, existem alguns passos a serem concluidos:
@@ -36,15 +24,15 @@ Para utilizar o Dashboard, existem alguns passos a serem concluidos:
     - É importante instalar completamente o MySQL, e verificar se o localhost root está configurado
 
     - verificar se a senha nos arquivos é a mesma que no seu usuário root MySQL
-        - na main.py, altere o valor da variável "DB_PASWORD" pela sua senha (linha 13 do código)
+        - na main.py, altere o valor da variável "DB_PASWORD" pela sua senha (linha 14 do código)
         - na insert_data.py, altere o valor da variável "password" pela sua senha (linha 5 do código)
-        - na dashboard.py, altere o valor da variável "password" pela sua senha (linha 26 do código)
+        - na dashboard.py, altere o valor da variável "password" pela sua senha (linha 28 do código)
 
 - Primeira execução:
-    - Rode o arquivo main.py
+    - Abra o arquivo main.py (dois cliques ou execute-o por algum interpretador)
 
 ## Como funciona o Dashboard
-Para executar o Dashboard, apenas rode o arquivo main.py
+Para executar o Dashboard, apenas execute o arquivo main.py (dois cliques ou execute-o por algum interpretador)
 
 O código cria um arquivo cache local com todas as proposições em um determinado período de tempo ([default: 2023 - hoje em dia], alterável na linha 22 do código acess_api.py), o processo da criação dessa cache é demorado, porém apenas ocorre na primeira execução, por isso não se assuste. nas próximas execuções, as filtragens ocorrem de forma rápida.
 
@@ -58,10 +46,10 @@ Todas as preposições filtradas podem ser acessadas pelos links na sessão "Pre
 
 Esperamos que esse Dashboard seja útil para suas pesquisas!
 
-## Como rodar o código automaticamente
+## Como rodar por código automaticamente
 python main.py
 
-## Como rodar o código manualmente
+## Como rodar por código manualmente
 python acess_api.py
 
 ~ cria o banco no computador usando create_database.sql ~
@@ -69,3 +57,16 @@ python acess_api.py
 python insert_data.py
 
 streamlit run dashboard.py
+# Especificações:
+## Arquivos
+- **_acess_api.py_**: Faz acesso a API (atualmente somente da Câmara) e retorna PL's, PLP's e PEC's, que tenham similiaridade semântica determinada com uma frase escolhida (como "Projetos de lei sobre IA's"), em formato json, e salva em arquivos CSV para serem analisados;
+- **_create_database.sql_**: Cria um banco de dados em MySQL para armazenar os projetos de lei;
+- **_insert_data.py_**: Lê as linhas do CSV e salva como instâncias do banco criado, populando-o;
+- **_dashboard.py_**: cria o dashboard usando as informações armazenadas no banco de dados MySQL;
+- **_main.py_**: arquivo main, organiza a execução em sequencia de todos os arquivos necessários para o funcionamento do dashboard;
+- **_requirements.txt_**: Arquivo que contém todas as bibliotecas necessárias para executar os códigos python;
+- Outros arquivos serão gerados durante a execução da aplicação;
+## Pastas
+- **_projetos_em_csv_**: Pasta para armazenar os CSVs gerados pelo acesso_api.py
+(caso a pasta "projetos_em_csv" não exista, a main.py criará ela automaticamente)  
+

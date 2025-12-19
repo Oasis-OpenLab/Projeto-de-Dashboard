@@ -3,6 +3,7 @@ import os
 import shutil
 import mysql.connector
 import sys
+import time
 
 # --- CONFIGURAÇÃO GLOBAL DE CAMINHOS ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -36,6 +37,7 @@ def executar_api():
     
     script_path = obter_caminho("acess_api.py")
     
+    # Executa o script
     subprocess.run([sys.executable, script_path], check=True, cwd=BASE_DIR)
     
     # Movimentação do arquivo
@@ -80,10 +82,11 @@ def recriar_banco():
                 try:
                     cursor.execute(command)
                 except mysql.connector.Error as err:
+                    # Ignora erro se tentar apagar banco que não existe
                     if err.errno == 1008: 
                         pass
                     else:
-                        print(f"Erro ao executar comando SQL: {err}")
+                        print(f"Erro SQL: {err}")
                         raise err
             
         cnx.commit()
@@ -91,41 +94,53 @@ def recriar_banco():
         cnx.close()
         print("Banco de dados 'Oasis' recriado com sucesso.")
     except mysql.connector.Error as err:
-        print(f"Erro crítico no banco: {err}")
-        sys.exit(1)
+        print(f"Erro crítico de conexão ao MySQL: {err}")
+        # Não usamos sys.exit aqui para permitir que o usuário veja o erro no final
+        raise err
 
 def inserir_dados():
     print("\n>>> [3/4] Inserindo dados no SQL (insert_data.py)...")
     script_path = obter_caminho("insert_data.py")
     
-    try:
-        subprocess.run([sys.executable, script_path], check=True, cwd=BASE_DIR)
-    except subprocess.CalledProcessError:
-        print("Erro ao inserir dados. Verifique a senha ou o código.")
-        sys.exit(1)
+    subprocess.run([sys.executable, script_path], check=True, cwd=BASE_DIR)
 
 def abrir_dashboard():
     print("\n>>> [4/4] Iniciando Dashboard (Streamlit)...")
-    print("Pressione Ctrl+C no terminal para encerrar o servidor.")
+    print("---------------------------------------------------------")
+    print("O navegador deve abrir automaticamente.")
+    print("Para parar, feche esta janela ou pressione Ctrl+C.")
+    print("---------------------------------------------------------")
     
     dashboard_path = obter_caminho("dashboard.py")
-    subprocess.run([sys.executable, "-m", "streamlit", "run", dashboard_path], check=True, cwd=BASE_DIR)
+    
+    # Garante que estamos usando 'python.exe' (com janela) e não 'pythonw.exe' (sem janela)
+    executavel_python = sys.executable.replace("pythonw.exe", "python.exe")
+    
+    subprocess.run([executavel_python, "-m", "streamlit", "run", dashboard_path], check=True, cwd=BASE_DIR)
 
 if __name__ == "__main__":
-    print(f"--- INICIANDO PIPELINE DE DADOS OASIS ---")
-    print(f"Diretório base: {BASE_DIR}")
-    
-    # 0. Garante que a pasta existe antes de tudo
-    garantir_estrutura_pastas()
-    
-    # 1. Coleta
-    executar_api()
-    
-    # 2. Banco
-    recriar_banco()
-    
-    # 3. Inserção
-    inserir_dados()
-    
-    # 4. Dashboard
-    abrir_dashboard()
+    try:
+        print(f"--- INICIANDO PIPELINE DE DADOS OASIS ---")
+        print(f"Diretório base: {BASE_DIR}")
+        
+        # 0. Estrutura
+        garantir_estrutura_pastas()
+        
+        # 1. Coleta
+        executar_api()
+        
+        # 2. Banco
+        recriar_banco()
+        
+        # 3. Inserção
+        inserir_dados()
+        
+        # 4. Dashboard
+        abrir_dashboard()
+        
+    except Exception as e:
+        print("\n\n#################################################")
+        print("OCORREU UM ERRO DURANTE A EXECUÇÃO")
+        print(f"Erro: {e}")
+        print("#################################################")
+        input("\nPressione ENTER para fechar a janela...")
