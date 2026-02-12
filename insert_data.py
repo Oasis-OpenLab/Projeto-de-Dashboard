@@ -1,8 +1,9 @@
 import mysql.connector
 import csv
 import datetime
+import config
 
-cnx = mysql.connector.connect(user='root', password=' ', host='localhost', database='Oasis')
+cnx = mysql.connector.connect(user=config.USUARIO, password=config.SENHA, host=config.HOST, database=config.NOME)
 cursor = cnx.cursor()
 
 # Mapeia Nomes do CSV (Chave) para Nomes do Banco (Valor)

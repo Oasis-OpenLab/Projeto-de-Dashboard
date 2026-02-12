@@ -3,7 +3,7 @@ import mysql.connector
 import pandas as pd
 import plotly.express as px
 from datetime import date
-
+import config
 
 # ==============================================
 # 1) CONFIGURAÇÃO BÁSICA DO APP
@@ -22,10 +22,10 @@ st.title("Dashboard dos Projetos de Lei da Câmara dos Deputados - OASIS")
 @st.cache_data
 def load_data(query):
     conn = mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password=" ",
-        database="Oasis"
+        host=config.HOST,
+        user=config.USUARIO,
+        password=config.SENHA,
+        database=config.NOME
     )
     return pd.read_sql(query, conn)
 

@@ -11,6 +11,7 @@ import torch
 import unicodedata
 from datetime import datetime, timedelta
 from sentence_transformers import SentenceTransformer, util
+import config
 
 # =============================================================================
 # 1. CONFIGURAÇÕES GERAIS
@@ -19,16 +20,16 @@ CAMARA_BASE_URL = "https://dadosabertos.camara.leg.br/api/v2"
 
 # Configuração de Datas para Coleta
 # Ajuste DATA_INICIO_COLETA conforme necessário para o histórico desejado
-DATA_INICIO_COLETA = datetime(2023, 1, 1) 
+DATA_INICIO_COLETA = config.DATA_INICIO_COLETA
 DATA_FIM_COLETA = datetime.now()
 TIPOS_DOCUMENTO = ["PL", "PLP", "PEC"]
 
 # Configuração de Busca e Filtro
-CONSULTA_USUARIO = "Regulamentação inteligência artificial e algoritmos"
-MODELO_NOME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-PESO_SEMANTICO = 0.5
-PESO_KEYWORD = 0.5    
-FILTRO_THRESHOLD = 0.45
+CONSULTA_USUARIO = config.CONSULTA_USUARIO
+MODELO_NOME = config.MODELO_NOME
+PESO_SEMANTICO = config.PESO_SEMANTICO
+PESO_KEYWORD = config.PESO_KEYWORD    
+FILTRO_THRESHOLD = config.FILTRO_THRESHOLD
 
 # Nomes de Arquivos (Internos e de Saída)
 NOME_ARQUIVO_BANCO_DADOS = "camara_db_completo_cache.json"
@@ -118,9 +119,11 @@ def limpar_texto_basico(texto):
 # =============================================================================
 # 3. MÓDULO DE COLETA (Lógica do coletor_camara.py)
 # =============================================================================
-def salvar_json(dados, nome_arquivo):
+def salvar_json(dados, nome_arquivo, data=None):
     try:
         with open(nome_arquivo, 'w', encoding='utf-8') as f:
+            if data:
+                f.write(f"{data}\n")
             json.dump(dados, f, indent=4, ensure_ascii=False)
     except Exception as e:
         print(f"[ERRO] Falha ao salvar {nome_arquivo}: {e}")
@@ -128,7 +131,16 @@ def salvar_json(dados, nome_arquivo):
 def carregar_json(nome_arquivo):
     if not os.path.exists(nome_arquivo): return None
     try:
-        with open(nome_arquivo, 'r', encoding='utf-8') as f: return json.load(f)
+        with open(nome_arquivo, 'r', encoding='utf-8') as f:
+            f.readline()
+            return json.load(f)
+
+    except: return None
+def ler_data_json(nome_arquivo):
+    if not os.path.exists(nome_arquivo): return None
+    try:
+        with open(nome_arquivo, 'r', encoding='utf-8') as f:
+            return f.readline().strip()
     except: return None
 
 def obter_lista_ids(session, base_url, dt_inicio, dt_fim, tipos):
@@ -173,7 +185,6 @@ def obter_lista_ids(session, base_url, dt_inicio, dt_fim, tipos):
 def executar_coleta_completa():
     ids_salvos = carregar_json(NOME_ARQUIVO_CACHE_IDS)
     session = requests.Session()
-    
     # 1. Obter IDs (se não existir cache ou se quiser forçar atualização)
     if not ids_salvos:
         ids_salvos = obter_lista_ids(session, CAMARA_BASE_URL, DATA_INICIO_COLETA, DATA_FIM_COLETA, TIPOS_DOCUMENTO)
@@ -248,8 +259,9 @@ def executar_coleta_completa():
             time.sleep(1)
 
     session.close()
-    salvar_json(proposicoes_detalhadas, NOME_ARQUIVO_BANCO_DADOS)
+    salvar_json(proposicoes_detalhadas, NOME_ARQUIVO_BANCO_DADOS, DATA_INICIO_COLETA)
     return proposicoes_detalhadas
+
 
 # =============================================================================
 # 4. MÓDULO DE KEYWORDS (Lógica do gerador_keywords.py)
@@ -408,10 +420,22 @@ def executar_filtragem(db, kw_data, model):
 # =============================================================================
 if __name__ == "__main__":
     print("--- INICIANDO SISTEMA UNIFICADO DE COLETA E FILTRAGEM (OASIS) ---", flush=True)
-    
+
+    data = ler_data_json(NOME_ARQUIVO_BANCO_DADOS)
+    if data:
+        cache_data = datetime.strptime((data), "%Y-%m-%d %H:%M:%S")
+    else:
+        cache_data = None
+
     # 1. Carrega ou Coleta Dados
     db_dados = carregar_json(NOME_ARQUIVO_BANCO_DADOS)
     if not db_dados:
+        db_dados = executar_coleta_completa()
+    elif DATA_INICIO_COLETA != cache_data:
+        os.remove(NOME_ARQUIVO_BANCO_DADOS)
+        os.remove(NOME_ARQUIVO_CACHE_IDS)
+        if (os.path.exists("projetos_em_csv\proposicoes_camara_resumo.csv")):
+            os.remove("projetos_em_csv\proposicoes_camara_resumo.csv")
         db_dados = executar_coleta_completa()
     else:
         print(f"[DB] Base de dados carregada: {len(db_dados)} registros.", flush=True)

@@ -4,14 +4,17 @@ import shutil
 import mysql.connector
 import sys
 import time
+import config
+
 
 # --- CONFIGURAÇÃO GLOBAL DE CAMINHOS ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # --- CONFIGURAÇÃO DO BANCO DE DADOS ---
-DB_HOST = "localhost"
-DB_USER = "root"
-DB_PASSWORD = " "
+DB_HOST = config.HOST
+DB_USER = config.USUARIO
+DB_PASSWORD = config.SENHA
+DB_NAME = config.NOME
 
 def obter_caminho(nome_arquivo):
     """Retorna o caminho completo compatível com o sistema operacional"""
@@ -121,6 +124,7 @@ def abrir_dashboard():
 if __name__ == "__main__":
     try:
         print(f"--- INICIANDO PIPELINE DE DADOS OASIS ---")
+
         print(f"Diretório base: {BASE_DIR}")
         
         # 0. Estrutura
