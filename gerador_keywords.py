@@ -51,17 +51,26 @@ if __name__ == "__main__":
     for arquivo in arquivos_db:
         nome_base = os.path.basename(arquivo)
 
-        # Extrai o sufixo da legislatura
-        # Ex: camara_db_leg56.json → leg56
+        # Extrai o sufixo da legislatura. Ex: camara_db_leg56.json → leg56
         sufixo = nome_base.replace("camara_db_", "").replace(".json", "")
 
         # Define nome do arquivo de cache das keywords vetorizadas
-        # Salva o pkl na nova pasta
         arquivo_pkl = os.path.join(config.PASTA_DADOS, f"keywords_embeddings_{sufixo}.pkl")
 
-        # Só processa se ainda não existir cache
-        if not os.path.exists(arquivo_pkl):
-            print(f"\nProcessando Keywords de: {nome_base}")
+        # --- NOVO: LÓGICA DE INVALIDAÇÃO DE CACHE (SMART SYNC) ---
+        # Pegamos a data e hora exata da última modificação do arquivo JSON bruto
+        json_mtime = os.path.getmtime(arquivo)
+        precisa_atualizar = True
+
+        # Se o arquivo .pkl (o cache da IA) já existir, comparamos a idade
+        if os.path.exists(arquivo_pkl):
+            pkl_mtime = os.path.getmtime(arquivo_pkl)
+            # Se o Cache for mais "novo" (recente) que o arquivo JSON, significa que não houve mudanças na Câmara
+            if pkl_mtime > json_mtime:
+                precisa_atualizar = False 
+
+        if precisa_atualizar:
+            print(f"\nAtualizando vetores de Keywords para: {nome_base} (Dados Novos Detectados!)")
             # Carrega JSON da legislatura
             with open(arquivo, 'r', encoding='utf-8') as f: dados = json.load(f)
             # Extrai lista única de keywords
@@ -86,5 +95,5 @@ if __name__ == "__main__":
                     pickle.dump({"keywords_texto": keywords, "keywords_vectors": embeddings.cpu()}, f)
             print(f"Salvo: {arquivo_pkl}")
         else:
-            # Se já existir cache, evita recalcular
-            print(f"Cache de keywords já existe para {sufixo}. Pulando.")
+            # Se já existir cache e ele estiver atualizado, evita recalcular
+            print(f"Cache de keywords já está sincronizado para {sufixo}. Pulando.")

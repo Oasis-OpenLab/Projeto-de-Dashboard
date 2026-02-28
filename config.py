@@ -10,7 +10,7 @@ PASTA_CSV = os.path.join(BASE_DIR, "projetos_em_csv")
 # 1. CONFIGURAÇÕES MySQL
 HOST = "localhost"
 USUARIO = "root"
-SENHA = " "  # Coloque sua senha aqui
+SENHA = "91574602"  # Coloque sua senha aqui
 NOME = "Oasis"
 
 # 2. CONFIGURAÇÕES GERAIS DA IA
