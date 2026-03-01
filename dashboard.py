@@ -59,42 +59,74 @@ def load_min_date():
 # ==============================================
 st.sidebar.header("⚙️ Filtros do Painel")
 
-numero_norma = st.sidebar.text_input("Número da Norma (Ex: PL 2338/2023 ou 2338)")
+# Filtro de texto para buscar pelo número exato ou parcial da norma (ex: PL 2338/2023 ou 2338)
+numero_norma = st.sidebar.text_input("Norma")
 
-# Carrega opções dinâmicas do banco
+# Carrega opções dinâmicas de partidos direto do banco de dados
 partidos_disponiveis = load_distinct_values("partido")
 partido_filtro = st.sidebar.selectbox("Partido do Autor", partidos_disponiveis)
 
-# --- NOVO: Filtro por Nome do Autor (Abaixo do Partido) ---
-autor_filtro = st.sidebar.text_input("Nome do Autor (Ex: Silva, Eduardo Gomes)")
+# Filtro de texto para buscar pelo nome ou sobrenome do autor
+autor_filtro = st.sidebar.text_input("Autor")
 
+# Carrega as situações atuais possíveis (Tramitando, Arquivada, etc.)
 situacoes_disponiveis = load_distinct_values("situacao")
 situacao_filtro = st.sidebar.selectbox("Situação da Proposição", situacoes_disponiveis)
 
+# Busca textual ampla em ementa, indexação ou descrição
 keyword = st.sidebar.text_input("Palavra-chave extra (Opcional)")
 
+st.sidebar.markdown("---")
+st.sidebar.markdown("**Filtro de Período**")
+
+# --- NOVO: Botão para escolher qual data o calendário vai filtrar ---
+# Define se o período escolhido abaixo se refere ao nascimento do projeto ou ao seu último andamento
+tipo_data = st.sidebar.radio(
+    "Filtrar período pela:",
+    ["Data de Apresentação", "Última Movimentação"]
+)
+
+# Pega a data mais antiga do banco para o limite do calendário
 min_data_db = load_min_date()
 data_inicio = st.sidebar.date_input("Data Início", min_data_db)
 data_fim = st.sidebar.date_input("Data Fim", date.today())
 
+# --- NOVO: Controle de Ordenação ---
+# Define como a tabela principal será classificada visualmente para o usuário
+st.sidebar.markdown("---")
+ordenacao = st.sidebar.radio(
+    "Ordenar resultados por:",
+    ["Relevância da IA", "Data Mais Recente"]
+)
+
 def build_where_clause():
-    """Constrói a cláusula WHERE do SQL dinamicamente."""
-    clausulas = [f"datadeapresentacao BETWEEN '{data_inicio}' AND '{data_fim}'"]
+    """Constrói a cláusula WHERE do SQL dinamicamente baseada nos filtros ativos."""
+    clausulas = []
     
+    # O Python verifica o que você selecionou no botão e escolhe a coluna certa do banco
+    coluna_data = "datadeapresentacao" if tipo_data == "Data de Apresentação" else "dataultimo"
+    
+    # Exige que a data não seja nula e esteja dentro do período do calendário
+    clausulas.append(f"{coluna_data} IS NOT NULL")
+    clausulas.append(f"{coluna_data} BETWEEN '{data_inicio}' AND '{data_fim}'")
+    
+    # Filtro com LIKE para encontrar trechos do número da norma
     if numero_norma:
         clausulas.append(f"norma LIKE '%{numero_norma}%'")
         
+    # Filtro de correspondência exata para partido
     if partido_filtro != "Todos":
         clausulas.append(f"partido = '{partido_filtro}'")
         
-    # --- NOVA REGRA DO FILTRO DE AUTOR AQUI ---
+    # Filtro com LIKE para encontrar partes do nome do autor
     if autor_filtro:
-        # Usamos LIKE para permitir buscar apenas por partes do nome
         clausulas.append(f"autor LIKE '%{autor_filtro}%'")
         
+    # Filtro de correspondência exata para situação
     if situacao_filtro != "Todos":
         clausulas.append(f"situacao = '{situacao_filtro}'")
         
+    # Busca complexa: olha em 3 colunas diferentes ao mesmo tempo
     if keyword:
         clausulas.append(f"""
         (ementa LIKE '%{keyword}%' 
@@ -102,6 +134,7 @@ def build_where_clause():
          OR descricao LIKE '%{keyword}%')
         """)
         
+    # Une todas as regras com 'AND' para criar o filtro final estrito
     return "WHERE " + " AND ".join(clausulas)
 
 # ==============================================
@@ -150,10 +183,23 @@ with tab_visao:
             st.plotly_chart(fig2, use_container_width=True)
 
 # --- ABA 2: PROPOSIÇÕES ---
-# --- ABA 2: PROPOSIÇÕES ---
 with tab_proposicoes:
     st.subheader("Detalhamento dos Projetos")
 
+    # --- NOVA LÓGICA DE ORDENAÇÃO DINÂMICA COM O NOVO BOTÃO ---
+    if ordenacao == "Relevância da IA":
+        # Se escolheu a IA, a nota de relevância manda em tudo (do maior pro menor)
+        ordem_sql = "ORDER BY score_relevancia DESC"
+    else:
+        # Se escolheu "Data Mais Recente", o Python olha pro filtro de cima para saber qual data usar como prioridade
+        if tipo_data == "Data de Apresentação":
+            # Ordena primeiro pelo nascimento mais recente, e usa a nota da IA para desempatar projetos do mesmo dia
+            ordem_sql = "ORDER BY datadeapresentacao DESC, score_relevancia DESC"
+        else:
+            # Ordena primeiro pela movimentação mais recente, e usa a nota da IA para desempatar
+            ordem_sql = "ORDER BY dataultimo DESC, score_relevancia DESC"
+
+# Aqui ocorre a união do filtro de pesquisa com a ordem escolhida pelo usuário
     query_props = f"""
     SELECT
         score_relevancia as "Relevância (IA)",
@@ -161,18 +207,23 @@ with tab_proposicoes:
         autor as "Autor",
         partido as "Partido",
         situacao as "Situação",
-        datadeapresentacao as "Data",
+        datadeapresentacao as "Data Apresentação",  
+        dataultimo as "Última Movimentação",        
+        ultimoestado as "Descrição do Andamento",   -- NOVA COLUNA ADICIONADA AQUI!
         ementa as "Ementa",
         linkweb as "Link"
     FROM Projetos
     {build_where_clause()}
-    ORDER BY score_relevancia DESC
+    {ordem_sql}  -- O comando final de ordem entra aqui!
     """
+    
+    # Chama a função principal de conexão e converte o resultado em um dataframe pandas
     df_props = load_data(query_props)
 
     if df_props.empty:
-        st.warning("Nenhuma proposição encontrada.")
+        st.warning("Nenhuma proposição encontrada com esses filtros.")
     else:
+        # Renderiza a tabela do Streamlit formatando o link para ser clicável
         st.dataframe(
             df_props,
             column_config={
