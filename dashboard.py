@@ -59,6 +59,9 @@ def load_min_date():
 # ==============================================
 st.sidebar.header("⚙️ Filtros do Painel")
 
+# --- NOVO: Filtro por Número da Norma ---
+numero_norma = st.sidebar.text_input("Número da Norma (Ex: PL 2338/2023 ou 2338)")
+
 # Carrega opções dinâmicas do banco
 partidos_disponiveis = load_distinct_values("partido")
 partido_filtro = st.sidebar.selectbox("Partido do Autor", partidos_disponiveis)
@@ -76,6 +79,11 @@ def build_where_clause():
     """Constrói a cláusula WHERE do SQL dinamicamente."""
     clausulas = [f"datadeapresentacao BETWEEN '{data_inicio}' AND '{data_fim}'"]
     
+    # --- NOVA REGRA DO FILTRO AQUI ---
+    if numero_norma:
+        # Usamos LIKE para permitir que o usuário digite apenas "2338" ou "PL 2338/2023"
+        clausulas.append(f"norma LIKE '%{numero_norma}%'")
+        
     if partido_filtro != "Todos":
         clausulas.append(f"partido = '{partido_filtro}'")
         
