@@ -58,7 +58,6 @@ def load_min_date():
         pass
     return date(2000, 1, 1)
 
-
 @st.cache_data
 def load_base_completa():
     """Lê todos os JSONs brutos da Câmara e transforma num DataFrame para busca rápida."""
@@ -115,7 +114,6 @@ keyword = st.sidebar.text_input("Palavra-chave extra (Opcional)")
 st.sidebar.markdown("---")
 st.sidebar.markdown("**Filtro de Período**")
 
-# --- NOVO: Botão para escolher qual data o calendário vai filtrar ---
 # Define se o período escolhido abaixo se refere ao nascimento do projeto ou ao seu último andamento
 tipo_data = st.sidebar.radio(
     "Filtrar período pela:",
@@ -127,7 +125,6 @@ min_data_db = load_min_date()
 data_inicio = st.sidebar.date_input("Data Início", min_data_db)
 data_fim = st.sidebar.date_input("Data Fim", date.today())
 
-# --- NOVO: Controle de Ordenação ---
 # Define como a tabela principal será classificada visualmente para o usuário
 st.sidebar.markdown("---")
 ordenacao = st.sidebar.radio(
@@ -146,23 +143,18 @@ def build_where_clause():
     clausulas.append(f"{coluna_data} IS NOT NULL")
     clausulas.append(f"{coluna_data} BETWEEN '{data_inicio}' AND '{data_fim}'")
     
-    # Filtro com LIKE para encontrar trechos do número da norma
     if numero_norma:
         clausulas.append(f"norma LIKE '%{numero_norma}%'")
         
-    # Filtro de correspondência exata para partido
     if partido_filtro != "Todos":
         clausulas.append(f"partido = '{partido_filtro}'")
         
-    # Filtro com LIKE para encontrar partes do nome do autor
     if autor_filtro:
         clausulas.append(f"autor LIKE '%{autor_filtro}%'")
         
-    # Filtro de correspondência exata para situação
     if situacao_filtro != "Todos":
         clausulas.append(f"situacao = '{situacao_filtro}'")
         
-    # Busca complexa: olha em 3 colunas diferentes ao mesmo tempo
     if keyword:
         clausulas.append(f"""
         (ementa LIKE '%{keyword}%' 
@@ -170,7 +162,6 @@ def build_where_clause():
          OR descricao LIKE '%{keyword}%')
         """)
         
-    # Une todas as regras com 'AND' para criar o filtro final estrito
     return "WHERE " + " AND ".join(clausulas)
 
 # ==============================================
@@ -226,20 +217,16 @@ with tab_visao:
 with tab_proposicoes:
     st.subheader("Detalhamento dos Projetos")
 
-    # --- NOVA LÓGICA DE ORDENAÇÃO DINÂMICA COM O NOVO BOTÃO ---
+    # LÓGICA DE ORDENAÇÃO DINÂMICA
     if ordenacao == "Relevância da IA":
-        # Se escolheu a IA, a nota de relevância manda em tudo (do maior pro menor)
         ordem_sql = "ORDER BY score_relevancia DESC"
     else:
-        # Se escolheu "Data Mais Recente", o Python olha pro filtro de cima para saber qual data usar como prioridade
         if tipo_data == "Data de Apresentação":
-            # Ordena primeiro pelo nascimento mais recente, e usa a nota da IA para desempatar projetos do mesmo dia
             ordem_sql = "ORDER BY datadeapresentacao DESC, score_relevancia DESC"
         else:
-            # Ordena primeiro pela movimentação mais recente, e usa a nota da IA para desempatar
             ordem_sql = "ORDER BY dataultimo DESC, score_relevancia DESC"
 
-# Aqui ocorre a união do filtro de pesquisa com a ordem escolhida pelo usuário
+    # UNIÃO DO FILTRO DE PESQUISA COM A ORDEM ESCOLHIDA
     query_props = f"""
     SELECT
         score_relevancia as "Relevância (IA)",
@@ -249,21 +236,19 @@ with tab_proposicoes:
         situacao as "Situação",
         datadeapresentacao as "Data Apresentação",  
         dataultimo as "Última Movimentação",        
-        ultimoestado as "Descrição do Andamento",   -- NOVA COLUNA ADICIONADA AQUI!
+        ultimoestado as "Descrição do Andamento",   
         ementa as "Ementa",
         linkweb as "Link"
     FROM Projetos
     {build_where_clause()}
-    {ordem_sql}  -- O comando final de ordem entra aqui!
+    {ordem_sql}
     """
     
-    # Chama a função principal de conexão e converte o resultado em um dataframe pandas
     df_props = load_data(query_props)
 
     if df_props.empty:
         st.warning("Nenhuma proposição encontrada com esses filtros.")
     else:
-        # Renderiza a tabela do Streamlit formatando o link para ser clicável
         st.dataframe(
             df_props,
             column_config={
@@ -272,37 +257,60 @@ with tab_proposicoes:
             use_container_width=True,
             hide_index=True
         )
-        # --- ABA 3: BUSCA GLOBAL (BASE COMPLETA) ---
+
+# --- ABA 3: BUSCA GLOBAL (BASE COMPLETA) ---
 with tab_busca_global:
     st.subheader("🌐 Busca na Base Completa da Câmara (Sem Filtro de IA)")
-    st.markdown("Aqui você pesquisa em **todos** os projetos coletados (mesmo os que a IA considerou irrelevantes para o tema).")
+    st.markdown("Pesquise em **todos** os projetos coletados. Se o projeto tiver passado pelo funil da IA, a nota aparecerá ao lado.")
     
-    # Barra de pesquisa exclusiva para esta aba
     busca_livre = st.text_input("🔍 Digite o número da norma (Ex: PL 2338/2023) ou uma palavra-chave para buscar na base inteira:")
     
     if busca_livre:
-        with st.spinner("Buscando nos arquivos locais..."):
+        with st.spinner("Buscando nos arquivos locais e cruzando com o banco de dados..."):
             df_completo = load_base_completa()
             
             if not df_completo.empty:
-                # Transforma a busca e os dados em minúsculo para a pesquisa não ligar para maiúsculas/minúsculas
                 termo = busca_livre.lower()
                 
-                # Filtra o dataframe: procura na Norma OU na Ementa OU no Autor
+                # Filtra a base bruta
                 mask = (
                     df_completo['Norma'].str.lower().str.contains(termo, na=False) |
                     df_completo['Ementa'].str.lower().str.contains(termo, na=False) |
                     df_completo['Autor'].str.lower().str.contains(termo, na=False)
                 )
-                df_resultado = df_completo[mask]
+                df_resultado = df_completo[mask].copy()
                 
+                # CRUZAMENTO COM O BANCO DE DADOS (SCORE IA)
+                if not df_resultado.empty:
+                    try:
+                        # Tenta buscar as notas do banco de dados MySQL
+                        df_notas = load_data("SELECT norma, score_relevancia FROM Projetos")
+                        
+                        # Cruza a tabela bruta com a tabela de notas
+                        df_resultado = df_resultado.merge(df_notas, left_on='Norma', right_on='norma', how='left')
+                        
+                        # Define o que escrever na coluna de Score
+                        df_resultado['Score IA'] = df_resultado['score_relevancia'].apply(
+                            lambda x: f"{float(x):.4f}" if pd.notnull(x) else "Barrado pela IA (< 0.40)"
+                        )
+                        
+                        # Limpa colunas auxiliares do cruzamento
+                        df_resultado = df_resultado.drop(columns=['norma', 'score_relevancia'])
+                        
+                    except Exception as e:
+                        # Se der erro, significa que o MySQL ainda não tem a coluna de notas
+                        df_resultado['Score IA'] = "⚠️ Pendente: Rode o main.py"
+                    
+                    # Organiza a ordem das colunas para a nota ficar logo no começo
+                    colunas_ordenadas = ['Norma', 'Score IA', 'Data de Apresentação', 'Autor', 'Situação', 'Ementa', 'Link']
+                    colunas_finais = [c for c in colunas_ordenadas if c in df_resultado.columns]
+                    df_resultado = df_resultado[colunas_finais]
+
                 st.success(f"Foram encontrados **{len(df_resultado)}** projetos na base completa.")
                 
                 st.dataframe(
                     df_resultado,
-                    column_config={
-                        "Link": st.column_config.LinkColumn("Link da Câmara")
-                    },
+                    column_config={"Link": st.column_config.LinkColumn("Link da Câmara")},
                     use_container_width=True,
                     hide_index=True
                 )
