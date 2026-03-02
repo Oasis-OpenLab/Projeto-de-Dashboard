@@ -40,7 +40,7 @@ def extrair_keywords(dados):
 
 if __name__ == "__main__":
     print(f"Carregando modelo de IA...")
-    try: model = SentenceTransformer(MODELO_NOME)
+    try: model = SentenceTransformer(MODELO_NOME, device="cpu")
     except: exit()
 
     # Busca os JSONs dentro da nova pasta

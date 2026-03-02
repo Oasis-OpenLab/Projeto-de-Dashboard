@@ -144,7 +144,7 @@ def processar_lote(dados, pkl_data, query_embedding, termos_usuario, model, sufi
 if __name__ == "__main__":
     print(f"\n--- Filtragem Híbrida: '{config.CONSULTA_USUARIO}' ---")
     # Carrega modelo de embedding
-    model = SentenceTransformer(config.MODELO_NOME)
+    model = SentenceTransformer(config.MODELO_NOME, device="cpu")
     # Gera embedding da consulta do usuário
     query_embedding = model.encode(config.CONSULTA_USUARIO, convert_to_tensor=True)
     # Extrai termos longos da consulta para a checagem de Keywords

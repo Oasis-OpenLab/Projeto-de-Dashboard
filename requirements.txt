@@ -1,0 +1,14 @@
+--index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://pypi.org/simple
+
+torch==2.2.2
+torchvision==0.17.2
+torchaudio==2.2.2
+
+numpy==1.26.4
+sentence-transformers==2.7.0
+pandas==2.1.4
+requests==2.31.0
+mysql-connector-python==8.3.0
+streamlit==1.31.1
+plotly==5.18.0
