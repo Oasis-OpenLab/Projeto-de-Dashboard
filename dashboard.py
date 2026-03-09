@@ -9,6 +9,11 @@ import glob
 import json
 import os
 
+# --- NOVOS IMPORTS PARA O MOTOR FUNCIONAR NO PAINEL ---
+from sentence_transformers import SentenceTransformer
+import filtrador_hibrido_v3_final as motor_ia
+import insert_data as motor_banco
+
 # ==============================================
 # 1) CONFIGURAÇÃO BÁSICA DO APP
 # ==============================================
@@ -17,12 +22,13 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🏛️ Dashboard dos Projetos de Lei - IA OASIS")
-st.markdown("Visualização das proposições filtradas e classificadas pela Inteligência Artificial.")
+st.title("🏛️ Dashboard dos Projetos de Lei - OASIS")
+st.markdown("Visualização das proposições filtradas e classificadas pelo sistema inteligente.")
 
 # ==============================================
 # 2) CONEXÃO E FUNÇÕES AUXILIARES
 # ==============================================
+
 @st.cache_data
 def load_data(query):
     conn = mysql.connector.connect(
@@ -85,12 +91,47 @@ def load_base_completa():
                         "Ementa": p.get('ementa', ''),
                         "Link": p.get('url_pagina_web_oficial', '')
                     })
-                    
-    # Converte para DataFrame do Pandas para facilitar a tabela
+    # Converte para DataFrame do Pandas para facilitar a tabela              
     return pd.DataFrame(dados_completos)
 
 # ==============================================
-# 3) SIDEBAR — FILTROS
+# 2.5) INICIALIZAÇÃO DO MOTOR DE BUSCA
+# ==============================================
+# Congela o modelo na memória RAM para as pesquisas serem instantâneas
+@st.cache_resource
+def carregar_modelo_ia():
+    return SentenceTransformer(config.MODELO_NOME)
+
+modelo_nlp = carregar_modelo_ia()
+
+# ==============================================
+# 3) MOTOR DE PESQUISA (CENTRALIZADO)
+# ==============================================
+st.markdown("---")
+st.subheader("🧠 Pesquisa Inteligente")
+
+# Caixa de pesquisa ocupando o centro da tela
+tema_pesquisa = st.text_input(
+    "Digite o tema ou assunto para filtrar na base da Câmara:", 
+    value=config.CONSULTA_USUARIO
+)
+
+if st.button("Filtrar", type="primary"):
+    with st.spinner("Vetorizando pesquisa e analisando todo o histórico de projetos..."):
+        # 1. Manda o texto e o modelo congelado para o filtrador
+        motor_ia.executar_filtragem(tema_pesquisa, modelo_nlp)
+        
+        # 2. Manda o insert_data apagar a tabela velha e salvar a nova
+        motor_banco.atualizar_banco_sql()
+        
+    st.success("Filtragem concluída com sucesso! Banco de dados atualizado.")
+    st.cache_data.clear()
+    st.rerun()
+
+st.markdown("---")
+
+# ==============================================
+# 4) SIDEBAR — FILTROS DO PAINEL
 # ==============================================
 st.sidebar.header("⚙️ Filtros do Painel")
 
@@ -129,7 +170,7 @@ data_fim = st.sidebar.date_input("Data Fim", date.today())
 st.sidebar.markdown("---")
 ordenacao = st.sidebar.radio(
     "Ordenar resultados por:",
-    ["Relevância da IA", "Data Mais Recente"]
+    ["Relevância de Score", "Data Mais Recente"]
 )
 
 def build_where_clause():
@@ -165,11 +206,11 @@ def build_where_clause():
     return "WHERE " + " AND ".join(clausulas)
 
 # ==============================================
-# 4) ESTRUTURA DE ABAS
+# 5) ESTRUTURA DE ABAS
 # ==============================================
 tab_visao, tab_proposicoes, tab_busca_global = st.tabs([
     "📊 Visão Geral", 
-    "📄 Lista Filtrada (IA)", 
+    "📄 Lista Filtrada", 
     "🌐 Busca Global (Base Completa)"
 ])
 
@@ -192,7 +233,7 @@ with tab_visao:
         total_partidos = df_visao['partido'].nunique()
         
         col1, col2 = st.columns(2)
-        col1.metric("Total de Projetos Relevantes (IA)", total_projetos)
+        col1.metric("Total de Projetos Filtrados", total_projetos)
         col2.metric("Partidos Envolvidos", total_partidos)
 
         st.markdown("---")
@@ -217,8 +258,7 @@ with tab_visao:
 with tab_proposicoes:
     st.subheader("Detalhamento dos Projetos")
 
-    # LÓGICA DE ORDENAÇÃO DINÂMICA
-    if ordenacao == "Relevância da IA":
+    if ordenacao == "Relevância de Score":
         ordem_sql = "ORDER BY score_relevancia DESC"
     else:
         if tipo_data == "Data de Apresentação":
@@ -229,7 +269,7 @@ with tab_proposicoes:
     # UNIÃO DO FILTRO DE PESQUISA COM A ORDEM ESCOLHIDA
     query_props = f"""
     SELECT
-        score_relevancia as "Relevância (IA)",
+        score_relevancia as "Relevância (Score)",
         norma as "Norma",
         autor as "Autor",
         partido as "Partido",
@@ -260,8 +300,8 @@ with tab_proposicoes:
 
 # --- ABA 3: BUSCA GLOBAL (BASE COMPLETA) ---
 with tab_busca_global:
-    st.subheader("🌐 Busca na Base Completa da Câmara (Sem Filtro de IA)")
-    st.markdown("Pesquise em **todos** os projetos coletados. Se o projeto tiver passado pelo funil da IA, a nota aparecerá ao lado.")
+    st.subheader("🌐 Busca na Base Completa da Câmara")
+    st.markdown("Pesquise em **todos** os projetos coletados.")
     
     busca_livre = st.text_input("🔍 Digite o número da norma (Ex: PL 2338/2023) ou uma palavra-chave para buscar na base inteira:")
     
@@ -272,7 +312,7 @@ with tab_busca_global:
             if not df_completo.empty:
                 termo = busca_livre.lower()
                 
-                # Filtra a base bruta
+                # Filtra a base bruta 
                 mask = (
                     df_completo['Norma'].str.lower().str.contains(termo, na=False) |
                     df_completo['Ementa'].str.lower().str.contains(termo, na=False) |
@@ -280,7 +320,7 @@ with tab_busca_global:
                 )
                 df_resultado = df_completo[mask].copy()
                 
-                # CRUZAMENTO COM O BANCO DE DADOS (SCORE IA)
+                # CRUZAMENTO COM O BANCO DE DADOS (SCORE)
                 if not df_resultado.empty:
                     try:
                         # Tenta buscar as notas do banco de dados MySQL
@@ -290,19 +330,17 @@ with tab_busca_global:
                         df_resultado = df_resultado.merge(df_notas, left_on='Norma', right_on='norma', how='left')
                         
                         # Define o que escrever na coluna de Score
-                        df_resultado['Score IA'] = df_resultado['score_relevancia'].apply(
-                            lambda x: f"{float(x):.4f}" if pd.notnull(x) else "Barrado pela IA (< 0.40)"
+                        df_resultado['Score'] = df_resultado['score_relevancia'].apply(
+                            lambda x: f"{float(x):.4f}" if pd.notnull(x) else "Abaixo da nota de corte (< 0.40)"
                         )
                         
                         # Limpa colunas auxiliares do cruzamento
                         df_resultado = df_resultado.drop(columns=['norma', 'score_relevancia'])
                         
                     except Exception as e:
-                        # Se der erro, significa que o MySQL ainda não tem a coluna de notas
-                        df_resultado['Score IA'] = "⚠️ Pendente: Rode o main.py"
+                        df_resultado['Score'] = "⚠️ Pendente: Rode o main.py"
                     
-                    # Organiza a ordem das colunas para a nota ficar logo no começo
-                    colunas_ordenadas = ['Norma', 'Score IA', 'Data de Apresentação', 'Autor', 'Situação', 'Ementa', 'Link']
+                    colunas_ordenadas = ['Norma', 'Score', 'Data de Apresentação', 'Autor', 'Situação', 'Ementa', 'Link']
                     colunas_finais = [c for c in colunas_ordenadas if c in df_resultado.columns]
                     df_resultado = df_resultado[colunas_finais]
 
