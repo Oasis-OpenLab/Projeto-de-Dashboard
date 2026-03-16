@@ -30,9 +30,7 @@ def rodar_dashboard():
             host=config.HOST,
             user=config.USUARIO,
             password=config.SENHA,
-            database=config.NOME,
-            port = config.porta,
-            ssl_ca = config.certificado
+            database=config.NOME
         )
         return pd.read_sql(query, conn)
 
@@ -98,21 +96,21 @@ def rodar_dashboard():
     st.sidebar.header("⚙️ Filtros do Painel")
 
     # Filtro de texto para buscar pelo número exato ou parcial da norma (ex: PL 2338/2023 ou 2338)
-    numero_norma = st.sidebar.text_input("Norma")
+    numero_norma = st.sidebar.text_input("Norma", help="Permite buscar pelo número total ou parcial da proposição. Ex: 'PL 2338/2023' ou apenas '2338'.")
 
     # Carrega opções dinâmicas de partidos direto do banco de dados
     partidos_disponiveis = load_distinct_values("partido")
-    partido_filtro = st.sidebar.selectbox("Partido do Autor", partidos_disponiveis)
+    partido_filtro = st.sidebar.selectbox("Partido do Autor", partidos_disponiveis, help="Filtra projetos de lei de acordo com o partido do autor principal da proposição.")
 
     # Filtro de texto para buscar pelo nome ou sobrenome do autor
-    autor_filtro = st.sidebar.text_input("Autor")
+    autor_filtro = st.sidebar.text_input("Autor", help="Busca projetos pelo nome ou sobrenome do autor da proposição.")
 
     # Carrega as situações atuais possíveis (Tramitando, Arquivada, etc.)
     situacoes_disponiveis = load_distinct_values("situacao")
-    situacao_filtro = st.sidebar.selectbox("Situação da Proposição", situacoes_disponiveis)
+    situacao_filtro = st.sidebar.selectbox("Situação da Proposição", situacoes_disponiveis, help="Mostra apenas projetos que estejam na situação selecionada (ex: Tramitando, Arquivado, Aprovado).")
 
     # Busca textual ampla em ementa, indexação ou descrição
-    keyword = st.sidebar.text_input("Palavra-chave extra (Opcional)")
+    keyword = st.sidebar.text_input("Palavra-chave extra (Opcional)", help="Busca termos específicos dentro da ementa, indexação e descrição técnica do projeto.")
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("**Filtro de Período**")
@@ -120,19 +118,21 @@ def rodar_dashboard():
     # Define se o período escolhido abaixo se refere ao nascimento do projeto ou ao seu último andamento
     tipo_data = st.sidebar.radio(
         "Filtrar período pela:",
-        ["Data de Apresentação", "Última Movimentação"]
+        ["Data de Apresentação", "Última Movimentação"],
+        help="Define se o período selecionado considera a criação do projeto ou sua última atualização na Câmara."
     )
 
     # Pega a data mais antiga do banco para o limite do calendário
     min_data_db = load_min_date()
-    data_inicio = st.sidebar.date_input("Data Início", min_data_db)
-    data_fim = st.sidebar.date_input("Data Fim", date.today())
+    data_inicio = st.sidebar.date_input("Data Início", min_data_db, help="Mostra apenas projetos a partir desta data.")
+    data_fim = st.sidebar.date_input("Data Fim", date.today(), help="Mostra apenas projetos até esta data.")
 
     # Define como a tabela principal será classificada visualmente para o usuário
     st.sidebar.markdown("---")
     ordenacao = st.sidebar.radio(
         "Ordenar resultados por:",
-        ["Relevância da IA", "Data Mais Recente"]
+        ["Relevância da IA", "Data Mais Recente"],
+        help="Relevância da IA ordena pelos projetos mais alinhados ao tema analisado. Data Mais Recente mostra os projetos mais novos primeiro."
     )
 
     def build_where_clause():
@@ -266,7 +266,7 @@ def rodar_dashboard():
         st.subheader("🌐 Busca na Base Completa da Câmara (Sem Filtro de IA)")
         st.markdown("Pesquise em **todos** os projetos coletados. Se o projeto tiver passado pelo funil da IA, a nota aparecerá ao lado.")
         
-        busca_livre = st.text_input("🔍 Digite o número da norma (Ex: PL 2338/2023) ou uma palavra-chave para buscar na base inteira:")
+        busca_livre = st.text_input("🔍 Digite o número da norma (Ex: PL 2338/2023) ou uma palavra-chave para buscar na base inteira:", help="Pesquisa direta em todos os projetos coletados da Câmara, inclusive os que não passaram pelo filtro da IA.")
         
         if busca_livre:
             with st.spinner("Buscando nos arquivos locais e cruzando com o banco de dados..."):
