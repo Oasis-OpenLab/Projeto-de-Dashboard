@@ -142,13 +142,15 @@ def processar_lote(dados, pkl_data, query_embedding, termos_usuario, model, sufi
     return lote_resultados
 
 if __name__ == "__main__":
-    print(f"\n--- Filtragem Híbrida: '{config.CONSULTA_USUARIO}' ---")
+    with open( 'banco_de_dados_local/pesquisa.txt', 'r', encoding='utf-8') as arquivo:
+            CONSULTA_USUARIO = arquivo.read()
+    print(f"\n--- Filtragem Híbrida: '{CONSULTA_USUARIO}' ---")
     # Carrega modelo de embedding
     model = SentenceTransformer(config.MODELO_NOME, device = config.dispositivo)
     # Gera embedding da consulta do usuário
-    query_embedding = model.encode(config.CONSULTA_USUARIO, convert_to_tensor=True)
+    query_embedding = model.encode(CONSULTA_USUARIO, convert_to_tensor=True)
     # Extrai termos longos da consulta para a checagem de Keywords
-    termos_usuario = [t for t in limpar_texto_basico(config.CONSULTA_USUARIO).upper().split() if len(t) > 3]
+    termos_usuario = [t for t in limpar_texto_basico(CONSULTA_USUARIO).upper().split() if len(t) > 3]
 
     # Busca todos os arquivos JSON da base
     padrao_busca = os.path.join(config.PASTA_DADOS, "camara_db_leg*.json")
