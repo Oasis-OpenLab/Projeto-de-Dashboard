@@ -12,10 +12,9 @@ HOST = "localhost"
 USUARIO = "root"
 SENHA = "91574602"  # Coloque sua senha aqui
 NOME = "Oasis"
-porta = 0
-certificado = " "
-# 2. CONFIGURAÇÕES GERAIS DA IA
-dispositivo = "cpu"    #escolha entre cpu e gpu, para alternar entre processador e placa gráfica
+
+# 2. CONFIGURAÇÕES GERAIS DA IA E HARDWARE
+CONSULTA_USUARIO = "Regulamentação inteligência artificial"
 DATA_INICIO_COLETA = datetime(2015, 1, 1) 
 MODELO_NOME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
