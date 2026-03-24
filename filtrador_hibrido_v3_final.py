@@ -141,22 +141,18 @@ def processar_lote(dados, pkl_data, query_embedding, termos_usuario, model, sufi
             })
     return lote_resultados
 
-# ==========================================
-# FUNÇÃO PRINCIPAL CHAMADA PELO DASHBOARD
-# ==========================================
-def executar_filtragem(consulta_usuario, model):
-    """
-    Recebe o tema digitado pelo usuário no Streamlit e o modelo de IA já carregado na memória RAM.
-    Filtra os 50.000 projetos e gera o CSV atualizado em poucos segundos.
-    """
-    print(f"\n--- Iniciando Filtragem Híbrida Dinâmica: '{consulta_usuario}' ---")
-    
-    # 1. Gera o vetor matemático da nova pergunta do usuário na hora
-    query_embedding = model.encode(consulta_usuario, convert_to_tensor=True)
-    
-    # 2. Extrai os termos puros da pergunta para o sistema de bônus por palavras-chave (Boost)
-    termos_usuario = [t for t in limpar_texto_basico(consulta_usuario).upper().split() if len(t) > 3]
+if __name__ == "__main__":
+    with open( 'banco_de_dados_local/pesquisa.txt', 'r', encoding='utf-8') as arquivo:
+            CONSULTA_USUARIO = arquivo.read()
+    print(f"\n--- Filtragem Híbrida: '{CONSULTA_USUARIO}' ---")
+    # Carrega modelo de embedding
+    model = SentenceTransformer(config.MODELO_NOME, device = config.dispositivo)
+    # Gera embedding da consulta do usuário
+    query_embedding = model.encode(CONSULTA_USUARIO, convert_to_tensor=True)
+    # Extrai termos longos da consulta para a checagem de Keywords
+    termos_usuario = [t for t in limpar_texto_basico(CONSULTA_USUARIO).upper().split() if len(t) > 3]
 
+    # Busca todos os arquivos JSON da base
     padrao_busca = os.path.join(config.PASTA_DADOS, "camara_db_leg*.json")
     arquivos_db = glob.glob(padrao_busca)
     todos_resultados = []
