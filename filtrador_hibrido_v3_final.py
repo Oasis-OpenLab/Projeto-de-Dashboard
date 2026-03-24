@@ -141,56 +141,59 @@ def processar_lote(dados, pkl_data, query_embedding, termos_usuario, model, sufi
             })
     return lote_resultados
 
-if __name__ == "__main__":
-    with open( 'banco_de_dados_local/pesquisa.txt', 'r', encoding='utf-8') as arquivo:
-            CONSULTA_USUARIO = arquivo.read()
-    print(f"\n--- Filtragem Híbrida: '{CONSULTA_USUARIO}' ---")
-    # Carrega modelo de embedding
-    model = SentenceTransformer(config.MODELO_NOME, device = config.dispositivo)
-    # Gera embedding da consulta do usuário
-    query_embedding = model.encode(CONSULTA_USUARIO, convert_to_tensor=True)
-    # Extrai termos longos da consulta para a checagem de Keywords
-    termos_usuario = [t for t in limpar_texto_basico(CONSULTA_USUARIO).upper().split() if len(t) > 3]
+# ==========================================
+# FUNÇÃO PRINCIPAL CHAMADA PELO DASHBOARD
+# ==========================================
+def executar_filtragem(consulta_usuario, model):
+    """
+    Recebe o tema digitado pelo usuário no Streamlit e o modelo de IA já carregado na memória RAM.
+    Filtra os 50.000 projetos e gera o CSV atualizado em poucos segundos.
+    """
+    print(f"\n--- Iniciando Filtragem Híbrida Dinâmica: '{consulta_usuario}' ---")
+    
+    # 1. Gera o vetor matemático da nova pergunta do usuário na hora
+    query_embedding = model.encode(consulta_usuario, convert_to_tensor=True)
+    
+    # 2. Extrai os termos puros da pergunta para o sistema de bônus por palavras-chave (Boost)
+    termos_usuario = [t for t in limpar_texto_basico(consulta_usuario).upper().split() if len(t) > 3]
 
-    # Busca todos os arquivos JSON da base
     padrao_busca = os.path.join(config.PASTA_DADOS, "camara_db_leg*.json")
     arquivos_db = glob.glob(padrao_busca)
     todos_resultados = []
 
-    # Processa cada legislatura separadamente (Evita estourar a memória RAM)
+    # 3. Varre as legislaturas cruzando a nova pergunta com os vetores já salvos
     for arquivo in arquivos_db:
         nome_base = os.path.basename(arquivo)
         sufixo_leg = nome_base.replace("camara_db_", "").replace(".json", "")
         arquivo_pkl = os.path.join(config.PASTA_DADOS, f"keywords_embeddings_{sufixo_leg}.pkl")
         
         if os.path.exists(arquivo_pkl):
-            print(f"\nAnalisando lote: {sufixo_leg}")
             with open(arquivo, 'r', encoding='utf-8') as f: dados = json.load(f)
             with open(arquivo_pkl, 'rb') as f: pkl = pickle.load(f)
             
+            # Chama a função processar_lote (que já existe no seu arquivo e continua igual)
             resultados_lote = processar_lote(dados, pkl, query_embedding, termos_usuario, model, sufixo_leg)
             todos_resultados.extend(resultados_lote)
-            # Liberação explícita de memória
             del dados, pkl, resultados_lote
 
-    # Ordena por score real (não o string formatado), do maior para o menor
+    # 4. Ordena os vencedores pela nota bruta da IA
     todos_resultados = sorted(todos_resultados, key=lambda x: x['raw_score'], reverse=True)
 
-    # Define colunas do CSV
     colunas = [
         "Norma", "Descricao da Sigla", "Data de Apresentacao", "Autor", "Partido", "Ementa", 
         "Link Documento PDF", "Link Página Web", "Indexacao", "Último Estado", "Data Último Estado", 
         "Situação", "Score Final", "Boost Keyword", "Similaridade Semantica"
     ]
 
-    # Garante que a pasta de destino exista
     pasta_destino = os.path.dirname(NOME_ARQUIVO_SAIDA)
     if pasta_destino and not os.path.exists(pasta_destino): os.makedirs(pasta_destino)
 
-    # Escrita final do CSV, pronto para ser lido pelo banco SQL
+    # 5. Sobrescreve o arquivo CSV antigo com os novos resultados
     with open(NOME_ARQUIVO_SAIDA, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=colunas, extrasaction='ignore', delimiter=';')
         writer.writeheader()
         writer.writerows(todos_resultados)
     
-    print(f"\n[SUCESSO] Total de resultados finais: {len(todos_resultados)}")
+    print(f"[SUCESSO] Filtragem concluída. {len(todos_resultados)} projetos encontrados para o novo tema.")
+
+# Remova o bloco antigo "if __name__ == '__main__':" que ficava aqui!
