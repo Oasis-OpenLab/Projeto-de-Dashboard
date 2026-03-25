@@ -10,11 +10,12 @@ PASTA_CSV = os.path.join(BASE_DIR, "projetos_em_csv")
 # 1. CONFIGURAÇÕES MySQL
 HOST = "localhost"
 USUARIO = "root"
-SENHA = "91574602"  # Coloque sua senha aqui
+SENHA = ""  # Coloque sua senha aqui
 NOME = "Oasis"
 
 # 2. CONFIGURAÇÕES GERAIS DA IA E HARDWARE
 CONSULTA_USUARIO = "Regulamentação inteligência artificial"
+CONSULTA_SECUNDARIA = "Educação e ensino"
 DATA_INICIO_COLETA = datetime(2015, 1, 1) 
 MODELO_NOME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
@@ -32,6 +33,9 @@ ATUALIZAR_BASE_API = False
 
 # 3. PESOS E NOTAS DE CORTE DO FILTRO HÍBRIDO
 PESO_SEMANTICO = 0.8
+PESO_QUERY_PRINCIPAL = 0.7  # Peso da primeira query, a mais geral
+PESO_QUERY_SECUNDARIA = 0.3  # Peso da segunda query, mais refinada
 PESO_KEYWORD = 0.2   
 FILTRO_THRESHOLD = 0.40
 THRESHOLD_SEMANTICO_MINIMO = 0.30
+THRESHOLD_SEMANTICO_MINIMO_SECUNDARIA = 0.30

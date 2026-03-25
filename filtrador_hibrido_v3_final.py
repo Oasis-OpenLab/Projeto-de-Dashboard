@@ -9,7 +9,7 @@ from utils_legislativo import limpar_ementa_para_vetorizacao, limpar_texto_basic
 
 NOME_ARQUIVO_SAIDA = os.path.join(config.PASTA_CSV, "proposicoes_camara_resumo.csv")
 
-def processar_lote(dados, pkl_data, query_embedding, termos_usuario, model, sufixo_leg):
+def processar_lote(dados, pkl_data, query_embedding, query_embedding_secundaria, termos_usuario, model, sufixo_leg):
     """
     Processa um lote correspondente a UMA legislatura específica.
 
@@ -59,14 +59,31 @@ def processar_lote(dados, pkl_data, query_embedding, termos_usuario, model, sufi
     # BLOCO 3 — SIMILARIDADE SEMÂNTICA
     # ----------------------------
     # Calcula similaridade de cosseno entre query_embedding e todos os embeddings das ementas
-    cos_scores = util.cos_sim(query_embedding, ementa_embeddings)[0]
+    # 1. Afinidade com o tema principal
+    cos_scores_principal = util.cos_sim(query_embedding, ementa_embeddings)[0]
+    # 2. Afinidade com o tema da query secundaria
+    if (query_embedding_secundaria) is not None:
+        cos_scores_secundaria = util.cos_sim(query_embedding_secundaria, ementa_embeddings)[0]
+    else:
+        # Se não tem query secundária, ela apenas "espelha" a query principal sem reprocessar
+        cos_scores_secundaria = cos_scores_principal
+
     lote_resultados = []
 
     # Itera sobre cada proposição
-    for idx, score_tensor in enumerate(cos_scores):
-        score_sem = float(score_tensor)
+    for idx, score_tensor in enumerate(cos_scores_principal):
+        score_sem_principal = float(score_tensor)
+        score_sem_secundaria = float(cos_scores_secundaria[idx]) # Devido ao espelhamento, podemos ter score_sem_secundaria == score_sem_principal, caso query secundaria seja nula
+
+        # REGRA DE CORTE DUPLA:
         # Se não atingir mínimo semântico, ignora imediatamente.
-        if score_sem < config.THRESHOLD_SEMANTICO_MINIMO: continue
+        if score_sem_principal < config.THRESHOLD_SEMANTICO_MINIMO:
+            continue
+        if query_embedding_secundaria is not None and score_sem_secundaria < config.THRESHOLD_SEMANTICO_MINIMO_SECUNDARIA:
+            continue
+
+        # MÉDIA PONDERADA (Ex: 70% de peso ao tema principal e 30% ao secundário)
+        score_sem_combinado = ((score_sem_principal * config.PESO_QUERY_PRINCIPAL) + (score_sem_secundaria * config.PESO_QUERY_SECUNDARIA))
 
         p = dados[idx]
 
@@ -105,7 +122,7 @@ def processar_lote(dados, pkl_data, query_embedding, termos_usuario, model, sufi
         # ----------------------------
         # BLOCO 5 — SCORE HÍBRIDO
         # ----------------------------
-        final = (score_sem * config.PESO_SEMANTICO) + (score_kw * config.PESO_KEYWORD)
+        final = (score_sem_combinado * config.PESO_SEMANTICO) + (score_kw * config.PESO_KEYWORD)
         
         if final >= config.FILTRO_THRESHOLD:
             # ----------------------------
@@ -135,7 +152,7 @@ def processar_lote(dados, pkl_data, query_embedding, termos_usuario, model, sufi
                 "Situação": meta['situacao'],
                 "Score Final": f"{final:.4f}",
                 "Boost Keyword": boost_ativo,
-                "Similaridade Semantica": f"{score_sem:.4f}",
+                "Similaridade Semantica": f"{score_sem_combinado:.4f}",
                 # Campo interno para ordenação
                 "raw_score": final
             })
@@ -144,7 +161,7 @@ def processar_lote(dados, pkl_data, query_embedding, termos_usuario, model, sufi
 # ==========================================
 # FUNÇÃO PRINCIPAL CHAMADA PELO DASHBOARD
 # ==========================================
-def executar_filtragem(consulta_usuario, model):
+def executar_filtragem(consulta_usuario, consulta_secundaria, model):
     """
     Recebe o tema digitado pelo usuário no Streamlit e o modelo de IA já carregado na memória RAM.
     Filtra os 50.000 projetos e gera o CSV atualizado em poucos segundos.
@@ -153,9 +170,13 @@ def executar_filtragem(consulta_usuario, model):
     
     # 1. Gera o vetor matemático da nova pergunta do usuário na hora
     query_embedding = model.encode(consulta_usuario, convert_to_tensor=True)
-    
+
+    consulta_secundaria_valida = consulta_secundaria and consulta_secundaria.strip()
+    query_embedding_secundaria = model.encode(consulta_secundaria, convert_to_tensor=True) if consulta_secundaria_valida else None
+
     # 2. Extrai os termos puros da pergunta para o sistema de bônus por palavras-chave (Boost)
-    termos_usuario = [t for t in limpar_texto_basico(consulta_usuario).upper().split() if len(t) > 3]
+    consulta_integral = f"{consulta_usuario} {consulta_secundaria}"
+    termos_usuario = [t for t in limpar_texto_basico(consulta_integral).upper().split() if len(t) > 3]
 
     padrao_busca = os.path.join(config.PASTA_DADOS, "camara_db_leg*.json")
     arquivos_db = glob.glob(padrao_busca)
@@ -172,7 +193,7 @@ def executar_filtragem(consulta_usuario, model):
             with open(arquivo_pkl, 'rb') as f: pkl = pickle.load(f)
             
             # Chama a função processar_lote (que já existe no seu arquivo e continua igual)
-            resultados_lote = processar_lote(dados, pkl, query_embedding, termos_usuario, model, sufixo_leg)
+            resultados_lote = processar_lote(dados, pkl, query_embedding, query_embedding_secundaria, termos_usuario, model, sufixo_leg)
             todos_resultados.extend(resultados_lote)
             del dados, pkl, resultados_lote
 

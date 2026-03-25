@@ -110,16 +110,25 @@ modelo_nlp = carregar_modelo_ia()
 st.markdown("---")
 st.subheader("🧠 Pesquisa Inteligente")
 
-# Caixa de pesquisa ocupando o centro da tela
-tema_pesquisa = st.text_input(
-    "Digite o tema ou assunto para filtrar na base da Câmara:", 
-    value=config.CONSULTA_USUARIO
-)
+col1, col2 = st.columns(2)
+
+with col1:
+    # Caixa de pesquisa ocupando o centro da tela
+    tema_pesquisa_principal = st.text_input(
+        "Digite o tema ou assunto para filtrar na base da Câmara:",
+        value=config.CONSULTA_USUARIO
+    )
+with col2:
+    tema_pesquisa_secundaria = st.text_input(
+        "Digite o tema ou assunto secundário para filtrar na base da Câmara:",
+        value=config.CONSULTA_SECUNDARIA
+    )
 
 if st.button("Filtrar", type="primary"):
+    st.write(f"Buscando por: **{tema_pesquisa_principal}** com o filtro **{tema_pesquisa_secundaria}**")
     with st.spinner("Vetorizando pesquisa e analisando todo o histórico de projetos..."):
         # 1. Manda o texto e o modelo congelado para o filtrador
-        motor_ia.executar_filtragem(tema_pesquisa, modelo_nlp)
+        motor_ia.executar_filtragem(tema_pesquisa_principal, tema_pesquisa_secundaria, modelo_nlp)
         
         # 2. Manda o insert_data apagar a tabela velha e salvar a nova
         motor_banco.atualizar_banco_sql()
