@@ -95,7 +95,7 @@ def load_base_completa():
     return pd.DataFrame(dados_completos)
 
 # ==============================================
-# 2.5) INICIALIZAÇÃO DO MOTOR DE BUSCA
+# 3) INICIALIZAÇÃO DO MOTOR DE BUSCA
 # ==============================================
 # Congela o modelo na memória RAM para as pesquisas serem instantâneas
 @st.cache_resource
@@ -105,7 +105,7 @@ def carregar_modelo_ia():
 modelo_nlp = carregar_modelo_ia()
 
 # ==============================================
-# 3) MOTOR DE PESQUISA (CENTRALIZADO)
+# 4) MOTOR DE PESQUISA (CENTRALIZADO)
 # ==============================================
 st.markdown("---")
 st.subheader("🧠 Pesquisa Inteligente")
@@ -142,7 +142,7 @@ if st.button("Filtrar", type="primary"):
 st.markdown("---")
 
 # ==============================================
-# 4) SIDEBAR — FILTROS DO PAINEL
+# 5) SIDEBAR — FILTROS DO PAINEL
 # ==============================================
 st.sidebar.header("⚙️ Filtros do Painel")
 
@@ -189,37 +189,37 @@ ordenacao = st.sidebar.radio(
 def build_where_clause():
     """Constrói a cláusula WHERE do SQL dinamicamente baseada nos filtros ativos."""
     clausulas = []
-    
+
     # O Python verifica o que você selecionou no botão e escolhe a coluna certa do banco
     coluna_data = "datadeapresentacao" if tipo_data == "Data de Apresentação" else "dataultimo"
-    
+
     # Exige que a data não seja nula e esteja dentro do período do calendário
     clausulas.append(f"{coluna_data} IS NOT NULL")
     clausulas.append(f"{coluna_data} BETWEEN '{data_inicio}' AND '{data_fim}'")
-    
+
     if numero_norma:
         clausulas.append(f"norma LIKE '%{numero_norma}%'")
-        
+
     if partido_filtro != "Todos":
         clausulas.append(f"partido = '{partido_filtro}'")
-        
+
     if autor_filtro:
         clausulas.append(f"autor LIKE '%{autor_filtro}%'")
-        
+
     if situacao_filtro != "Todos":
         clausulas.append(f"situacao = '{situacao_filtro}'")
-        
+
     if keyword:
         clausulas.append(f"""
         (ementa LIKE '%{keyword}%' 
          OR indexacao LIKE '%{keyword}%' 
          OR descricao LIKE '%{keyword}%')
         """)
-        
+
     return "WHERE " + " AND ".join(clausulas)
 
 # ==============================================
-# 5) ESTRUTURA DE ABAS
+# 6) ESTRUTURA DE ABAS
 # ==============================================
 tab_visao, tab_proposicoes, tab_busca_global = st.tabs([
     "📊 Visão Geral", 
@@ -250,21 +250,113 @@ with tab_visao:
         col2.metric("Partidos Envolvidos", total_partidos)
 
         st.markdown("---")
+        # -------------------------------
+        # Gráfico: Projetos por ano
+        # -------------------------------
+        query = f"""
+                SELECT YEAR(datadeapresentacao) AS ano, COUNT(*) AS quantidade
+                FROM Projetos
+                {build_where_clause()}
+                GROUP BY YEAR(datadeapresentacao)
+                ORDER BY ano;
+                """
+        df = load_data(query)
+        fig = px.line(
+            df,
+            x="ano",
+            y="quantidade",
+            title = "Projetos por ano",
+            markers = True
+        )
+        fig.update_xaxes(dtick=1)
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("---")
+        # -------------------------------
+        # Gráfico: Distribuição de Projetos por Partido
+        # -------------------------------
+        query = f"""
+        SELECT partido, COUNT(*) AS quantidade
+        FROM Projetos
+        {build_where_clause()}
+        AND partido IS NOT NULL AND partido <> ''
+        GROUP BY partido
+        ORDER BY quantidade DESC;
+        """
+        df = load_data(query)
+        fig = px.treemap(
+            df,
+            path=[px.Constant("Todos os Partidos"), "partido"],  # Define a hierarquia
+            values="quantidade",
+            color="quantidade",
+            color_continuous_scale="Ice",
+            title="Distribuição de Projetos por Partido"
+        )
+        # Ajustes estéticos para exibir os rótulos corretamente
+        fig.update_traces(textinfo="label+value")
+        fig.update_layout(height=600, margin=dict(t=50, l=10, r=10, b=10))
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("---")
 
         col_graf1, col_graf2 = st.columns(2)
 
         with col_graf1:
-            df_partido = df_visao.groupby('partido', as_index=False)['quantidade'].sum()
+            # -------------------------------
+            # Gráfico: Top 10 Partidos com Mais Projetos
+            # -------------------------------
+            df_partido = df_visao.groupby('partido', as_index=False)['quantidade'].sum().reset_index()
             df_partido = df_partido.sort_values(by='quantidade', ascending=False).head(10)
-            fig1 = px.bar(df_partido, x="partido", y="quantidade",
-                         title="Top 10 Partidos com Mais Projetos",
-                         labels={"partido": "Partido", "quantidade": "Projetos"})
+            fig1 = px.bar(
+                df_partido,
+                x="partido",
+                y="quantidade",
+                title="Top 10 Partidos com Mais Projetos",
+                labels={"partido": "Partido", "quantidade": "Projetos"}
+            )
             st.plotly_chart(fig1, use_container_width=True)
 
         with col_graf2:
-            df_sit = df_visao.groupby('situacao', as_index=False)['quantidade'].sum()
-            fig2 = px.pie(df_sit, values="quantidade", names="situacao",
-                         title="Distribuição por Situação Atual")
+            # -------------------------------
+            # Gráfico: Distribuição por Situação Atual
+            # -------------------------------
+            # 1. Agrupa por situacao e soma a coluna quantidade
+            df_sit = df_visao.groupby('situacao')['quantidade'].sum().reset_index()
+            # 2. Agora ordena (fora do agrupamento para não dar erro de argumento)
+            df_sit = df_sit.sort_values(by="quantidade", ascending=True)
+
+            fig2 = px.bar(
+                df_sit,
+                x="quantidade",
+                y="situacao",
+                orientation="h",
+                text="quantidade",  # Mostra o número exato na ponta da barra
+                title="Projetos por Situação Atual",
+                # Mesma lógica de cor: Degradê do Laranja para o Azul
+                color="quantidade",
+                color_continuous_scale=["#118AB2", "#FF9F1C"]
+            )
+
+            fig2.update_layout(
+                template="plotly_dark",
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                margin=dict(l=10, r=50, t=50, b=10),  # Margem lateral para o texto da esquerda não cortar
+                height=400,
+                showlegend=False
+            )
+
+            fig2.update_traces(
+                textposition='outside',  # Valor numérico fora da barra
+                marker=dict(line=dict(width=1, color="#073B4C")),
+                cliponaxis=False  # Garante que o número na ponta da barra não seja cortado
+            )
+
+            # Remove as grades do fundo para um look mais limpo
+            fig2.update_xaxes(showgrid=False, visible=False)
+            fig2.update_yaxes(showgrid=False, title="")
+
             st.plotly_chart(fig2, use_container_width=True)
 
 # --- ABA 2: PROPOSIÇÕES ---
