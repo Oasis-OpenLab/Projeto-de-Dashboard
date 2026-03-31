@@ -1,8 +1,6 @@
 import os
 from datetime import datetime
 import torch  # <-- NOVO IMPORT AQUI
-import streamlit as st
-import tempfile
 
 # --- MAPEAMENTO INTELIGENTE DE PASTAS ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -10,11 +8,10 @@ PASTA_DADOS = os.path.join(BASE_DIR, "banco_de_dados_local")
 PASTA_CSV = os.path.join(BASE_DIR, "projetos_em_csv")
 
 # 1. CONFIGURAÇÕES MySQL
-HOST = st.secrets["HOST"]
-USUARIO = st.secrets["USUARIO"]
-SENHA = st.secrets["SENHA"]  # Coloque sua senha aqui
-NOME = st.secrets["NOME"]
-porta = st.secrets["PORTA"]
+HOST = "localhost"
+USUARIO = "root"
+SENHA = ""  # Coloque sua senha aqui
+NOME = "Oasis"
 
 # 2. CONFIGURAÇÕES GERAIS DA IA E HARDWARE
 CONSULTA_USUARIO = "Regulamentação inteligência artificial"
@@ -29,12 +26,6 @@ elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
     dispositivo = "mps"   # MacBooks com chip Apple Silicon (M1, M2, M3)
 else:
     dispositivo = "cpu"   # Processador padrão de qualquer computador
-
-cert_content = st.secrets["CERTIFICADO"]
-
-with tempfile.NamedTemporaryFile(delete=False) as tmp:
-    tmp.write(cert_content.encode())
-    certificado = tmp.name
 
 # --- NOVO: INTERRUPTOR DA API ---
 # True = Conecta na Câmara e baixa projetos novos. False = Usa só o que já tem salvo (Muito mais rápido!)

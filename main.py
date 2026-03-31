@@ -43,10 +43,7 @@ def recriar_banco():
         cnx = mysql.connector.connect(
             user=config.USUARIO,
             password=config.SENHA,
-            host=config.HOST,
-            database=config.NOME,
-            port = config.porta,
-            ssl_ca = config.certificado
+            host=config.HOST
         )
         cursor = cnx.cursor()
         
