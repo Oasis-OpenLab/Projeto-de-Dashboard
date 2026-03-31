@@ -35,7 +35,9 @@ def load_data(query):
         host=config.HOST,
         user=config.USUARIO,
         password=config.SENHA,
-        database=config.NOME
+        database=config.NOME,
+        port = config.porta,
+        ssl_ca = config.certificado
     )
     return pd.read_sql(query, conn)
 

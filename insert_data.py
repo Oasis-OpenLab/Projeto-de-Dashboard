@@ -11,7 +11,7 @@ import config
 def atualizar_banco_sql():
     """Conecta no MySQL, limpa a pesquisa anterior e insere os novos projetos filtrados."""
     # Conecta no Banco
-    cnx = mysql.connector.connect(user=config.USUARIO, password=config.SENHA, host=config.HOST, database=config.NOME)
+    cnx = mysql.connector.connect(user=config.USUARIO, password=config.SENHA, host=config.HOST, database=config.NOME, port = config.porta, ssl_ca = config.certificado)
     cursor = cnx.cursor()
 
     # --- NOVO: LIMPEZA DO BANCO ---
