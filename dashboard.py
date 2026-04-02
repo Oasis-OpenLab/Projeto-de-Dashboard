@@ -359,6 +359,109 @@ with tab_visao:
 
             st.plotly_chart(fig2, use_container_width=True)
 
+        st.markdown("---")
+
+        # -------------------------------
+        # Gráficos: Distribuição de Projetos por Espectro Político
+        # -------------------------------
+        st.markdown("**Distribuição de Projetos por Espectro Político**")
+        st.caption("Fonte da Classificação Partidária: Jornal Valor Econômico")
+        tab_esp_tree, tab_esp_bar = st.tabs([
+            "Mapa de Árvore", 
+            "Gráfico de Barra", 
+        ])
+
+        mapa_espectro = {
+            "AGIR": "Centro-Direita",
+            "AVANTE": "Centro",
+            "CIDADANIA": "Centro-Esquerda",
+            "DC": "Visão Independente",
+            "DEM": "Centro-Direita",
+            "MDB": "Centro",
+            "MOBILIZA": "Centro-Direita",
+            "NOVO": "Direita",
+            "PATRI": "Extrema-Direita",
+            "PCB": "Esquerda",
+            "PCdoB": "Esquerda",
+            "PCO": "Extrema-Esquerda",
+            "PDT": "Centro-Esquerda",
+            "PL": "Direita",
+            "PMB": "Centro",
+            "PODE": "Visão Independente",
+            "PP": "Centro-Direita",
+            "PPS": "Centro-Esquerda",
+            "PR": "Direita",
+            "PRB": "Centro-Direita",
+            "PRD": "Centro-Direita",
+            "PROS": "Centro",
+            "PRTB": "Direita",
+            "PSB": "Centro-Esquerda",
+            "PSC": "Direita",
+            "PSD": "Centro",
+            "PSDB": "Centro",
+            "PSL": "Direita",
+            "PSOL": "Esquerda",
+            "PSTU": "Esquerda",
+            "PT": "Esquerda",
+            "PTB": "Direita",
+            "PV": "Centro-Esquerda",
+            "REDE": "Esquerda",
+            "REPUBLICANOS": "Direita",
+            "SOLIDARIEDADE": "Centro",
+            "UNIÃO": "Centro-Direita",
+            "UP": "Esquerda"
+        }
+        cores={
+            "Não Atribuído": "#E0E0E0",
+            "Extrema-Esquerda": "#C97A7A",
+            "Esquerda": "#E89A9A",
+            "Centro-Esquerda": "#F2B6B6",
+            "Centro": "#C8B6C8",
+            "Centro-Direita": "#B6C3F2",
+            "Direita": "#8FA8E8",
+            "Extrema-Direita": "#6F88C9",
+            "Visão Independente": "#A0A0A0" 
+        }
+
+        query = f"""
+        SELECT partido, COUNT(*) AS quantidade
+        FROM Projetos
+        {build_where_clause()}
+        AND partido IS NOT NULL AND partido <> ''
+        GROUP BY partido
+        ORDER BY quantidade DESC;
+        """
+        df = load_data(query)
+        df['espectro']= df['partido'].map(mapa_espectro).fillna("Não Atribuído")
+        
+        with tab_esp_tree:
+            fig = px.treemap(
+                df,
+                path=[px.Constant("Todos os Espectros"),"espectro", "partido"],
+                values="quantidade",
+                color="espectro",
+                color_discrete_map=cores
+            )
+            fig.update_traces(
+                textinfo="label+value",
+                textfont=dict(color="black")
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
+        df_agg = df.groupby("espectro")["quantidade"].sum().reset_index()
+        df_agg = df_agg.sort_values("quantidade", ascending=False)
+        
+        with tab_esp_bar:
+            fig = px.bar(
+                df_agg,
+                x="espectro",
+                y="quantidade",
+                labels={"espectro": "Espectro Político", "quantidade": "Projetos"},
+                color="espectro",
+                color_discrete_map=cores
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
 # --- ABA 2: PROPOSIÇÕES ---
 with tab_proposicoes:
     st.subheader("Detalhamento dos Projetos")
