@@ -5,6 +5,7 @@ import glob
 import config
 from sentence_transformers import SentenceTransformer
 from utils_legislativo import validar_tag
+from embeddings import get_model
 
 MODELO_NOME = config.MODELO_NOME
 
@@ -40,8 +41,8 @@ def extrair_keywords(dados):
 
 if __name__ == "__main__":
     print(f"Carregando modelo de IA...")
-    try: model = SentenceTransformer(MODELO_NOME, device= config.dispositivo)
-    except: exit()
+    # Carrega o modelo de embeddings (ex: SentenceTransformer do HuggingFace)
+    model = get_model()
 
     # Busca os JSONs dentro da nova pasta
     padrao_busca = os.path.join(config.PASTA_DADOS, "camara_db_leg*.json")
@@ -57,43 +58,70 @@ if __name__ == "__main__":
         # Define nome do arquivo de cache das keywords vetorizadas
         arquivo_pkl = os.path.join(config.PASTA_DADOS, f"keywords_embeddings_{sufixo}.pkl")
 
-        # --- NOVO: LÓGICA DE INVALIDAÇÃO DE CACHE (SMART SYNC) ---
-        # Pegamos a data e hora exata da última modificação do arquivo JSON bruto
-        json_mtime = os.path.getmtime(arquivo)
+        print(f"\nProcessando legislatura: {sufixo}")
+
+        # Abre e carrega os dados brutos dos projetos de lei
+        with open(arquivo, 'r', encoding='utf-8') as f:
+            dados = json.load(f)
+
+        # Extrai a lista de palavras-chave (keywords) dos dados carregados
+        keywords = extrair_keywords(dados)
+
+        # Se o arquivo não contiver keywords, pula para a próxima legislatura
+        if not keywords:
+            print("Nenhuma keyword encontrada. Pulando.")
+            continue
+
+        # Flag de controle para decidir se a IA precisa processar os dados
         precisa_atualizar = True
 
-        # Se o arquivo .pkl (o cache da IA) já existir, comparamos a idade
+        # 🔹 LÓGICA DE CACHE:
+        # Verifica se já existe um arquivo de embeddings salvo para esta legislatura
         if os.path.exists(arquivo_pkl):
-            pkl_mtime = os.path.getmtime(arquivo_pkl)
-            # Se o Cache for mais "novo" (recente) que o arquivo JSON, significa que não houve mudanças na Câmara
-            if pkl_mtime > json_mtime:
-                precisa_atualizar = False 
+            try:
+                # Carrega o cache existente
+                with open(arquivo_pkl, "rb") as f:
+                    cache = pickle.load(f)
 
+                # Validação estrutural rigorosa do cache:
+                # 1. Confirma se o arquivo é um dicionário
+                # 2. Confirma se possui as chaves necessárias
+                # 3. Confirma se a quantidade de keywords no cache é igual à extraída agora
+                if (
+                    isinstance(cache, dict)
+                    and "keywords_texto" in cache
+                    and "keywords_vectors" in cache
+                    and len(cache["keywords_texto"]) == len(keywords)
+                ):
+                    print(f"Cache válido para {sufixo}. Pulando vetorização.")
+                    precisa_atualizar = False # Evita rodar a IA desnecessariamente
+
+            except Exception:
+                # Se o arquivo existir mas estiver quebrado, força a recriação
+                print("Cache corrompido ou inválido. Regerando.")
+
+        # Se não houver cache válido, inicia o processamento pesado com a IA
         if precisa_atualizar:
-            print(f"\nAtualizando vetores de Keywords para: {nome_base} (Dados Novos Detectados!)")
-            # Carrega JSON da legislatura
-            with open(arquivo, 'r', encoding='utf-8') as f: dados = json.load(f)
-            # Extrai lista única de keywords
-            keywords = extrair_keywords(dados)
-            if keywords:
-                print(f"Vetorizando {len(keywords)} tags...")
+            print(f"Vetorizando {len(keywords)} tags...")
 
-                # Gera embeddings vetoriais para cada keyword
-                embeddings = model.encode(keywords, batch_size=64, show_progress_bar=True, convert_to_tensor=True)
+            # Gera as representações matemáticas (embeddings) das palavras-chave
+            embeddings = model.encode(
+                keywords,
+                batch_size=64,           # Processa em lotes para não estourar a memória
+                show_progress_bar=True,  # Mostra a barra de progresso no terminal
+                convert_to_tensor=True   # Mantém os dados no formato otimizado do PyTorch
+            )
 
-                # Salva cache em disco
-                # Estrutura salva:
-                # {
-                #   "keywords_texto": [...],
-                #   "keywords_vectors": tensor_cpu
-                # }
-                #
-                # Observação:
-                # .cpu() é importante se estiver rodando em GPU,
-                # porque pickle não salva tensor CUDA corretamente.
-                with open(arquivo_pkl, "wb") as f:
-                    pickle.dump({"keywords_texto": keywords, "keywords_vectors": embeddings.cpu()}, f)
+            # Salva o novo resultado no arquivo de cache (.pkl)
+            with open(arquivo_pkl, "wb") as f:
+                pickle.dump(
+                    {
+                        "keywords_texto": keywords,
+                        # .cpu() move os dados da placa de vídeo (se usada) para a RAM padrão, 
+                        # garantindo que o arquivo salvo possa ser lido em qualquer computador
+                        "keywords_vectors": embeddings.cpu() 
+                    },
+                    f
+                )
+
             print(f"Salvo: {arquivo_pkl}")
-        else:
-            # Se já existir cache e ele estiver atualizado, evita recalcular
-            print(f"Cache de keywords já está sincronizado para {sufixo}. Pulando.")

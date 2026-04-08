@@ -6,118 +6,103 @@ import glob
 from sentence_transformers import SentenceTransformer, util
 import config
 from utils_legislativo import limpar_ementa_para_vetorizacao, limpar_texto_basico, validar_tag
+from embeddings import get_model, get_or_create_embeddings
 
 NOME_ARQUIVO_SAIDA = os.path.join(config.PASTA_CSV, "proposicoes_camara_resumo.csv")
 
 def processar_lote(dados, pkl_data, query_embedding, query_embedding_secundaria, termos_usuario, model, sufixo_leg):
     """
+
     Processa um lote correspondente a UMA legislatura específica.
 
+
     Responsabilidades:
+
     1) Carregar ou gerar embeddings das ementas (cache por legislatura).
+
     2) Calcular similaridade semântica entre consulta do usuário e cada ementa.
+
     3) Aplicar reforço (boost) baseado em palavras-chave (híbrido).
+
     4) Calcular score final ponderado.
+
     5) Retornar apenas projetos que ultrapassem o threshold configurado.
-    """
 
-    # Arquivo de cache dos embeddings das ementas e o JSON base dessa legislatura.
-    arquivo_cache = os.path.join(config.PASTA_DADOS, f"cache_ementas_{sufixo_leg}.pkl")
-    arquivo_json = os.path.join(config.PASTA_DADOS, f"camara_db_{sufixo_leg}.json")
+    """ 
+    import os
+    import config
+    from sentence_transformers import util
+    # Certifique-se de que validar_tag está importado ou definido no escopo
     
-    ementa_embeddings = None
-    
     # ----------------------------
-    # BLOCO 1 — USO DE CACHE INTELIGENTE
+    # BLOCO 1 e 2 — EMBEDDINGS VIA MÓDULO EXTERNO
     # ----------------------------
-    # Pega a data de modificação do JSON bruto para ver se tem projetos novos
-    json_mtime = os.path.getmtime(arquivo_json)
+    ementa_embeddings = get_or_create_embeddings(
+        dados=dados,
+        sufixo_leg=sufixo_leg,
+        model=model
+    )
 
-    # Invalidação Inteligente: Só carrega o cache se ele for mais recente que o banco JSON
-    if os.path.exists(arquivo_cache):
-        pkl_mtime = os.path.getmtime(arquivo_cache)
-        # Se o cache é mais novo que o arquivo JSON, reaproveitamos os vetores
-        if pkl_mtime > json_mtime:
-            with open(arquivo_cache, 'rb') as f: cache_data = pickle.load(f)
-            # Segurança extra: Só reutiliza se o número de embeddings for igual ao número de projetos.
-            if len(cache_data) == len(dados): 
-                ementa_embeddings = cache_data
-
-    # ----------------------------
-    # BLOCO 2 — GERAÇÃO DE EMBEDDINGS (SE O CACHE ESTIVER INVÁLIDO)
-    # ----------------------------
-    if ementa_embeddings is None:
-        print(f"Gerando novos vetores de ementas para {sufixo_leg} (Base atualizada/Projetos novos)...")
-        # Limpa cada ementa antes de vetorização
-        ementas_limpas = [limpar_ementa_para_vetorizacao(p.get('ementa', '')) for p in dados]
-        # Gera embeddings em batch (mais eficiente)
-        ementa_embeddings = model.encode(ementas_limpas, batch_size=64, convert_to_tensor=True, show_progress_bar=True)
-        # Salva cache atualizado para execuções futuras
-        with open(arquivo_cache, 'wb') as f: pickle.dump(ementa_embeddings, f)
+    # CORREÇÃO CRÍTICA: Garantir que o tensor seja Float para evitar RuntimeError: Got Long
+    if ementa_embeddings is not None and not ementa_embeddings.is_floating_point():
+        ementa_embeddings = ementa_embeddings.float()
 
     # ----------------------------
     # BLOCO 3 — SIMILARIDADE SEMÂNTICA
     # ----------------------------
-    # Calcula similaridade de cosseno entre query_embedding e todos os embeddings das ementas
     # 1. Afinidade com o tema principal
     cos_scores_principal = util.cos_sim(query_embedding, ementa_embeddings)[0]
+    
     # 2. Afinidade com o tema da query secundaria
-    if (query_embedding_secundaria) is not None:
+    if query_embedding_secundaria is not None:
         cos_scores_secundaria = util.cos_sim(query_embedding_secundaria, ementa_embeddings)[0]
     else:
-        # Se não tem query secundária, ela apenas "espelha" a query principal sem reprocessar
         cos_scores_secundaria = cos_scores_principal
-
+    
     lote_resultados = []
 
     # Itera sobre cada proposição
     for idx, score_tensor in enumerate(cos_scores_principal):
         score_sem_principal = float(score_tensor)
-        score_sem_secundaria = float(cos_scores_secundaria[idx]) # Devido ao espelhamento, podemos ter score_sem_secundaria == score_sem_principal, caso query secundaria seja nula
+        score_sem_secundaria = float(cos_scores_secundaria[idx])
 
-        # REGRA DE CORTE DUPLA:
-        # Se não atingir mínimo semântico, ignora imediatamente.
+        # REGRA DE CORTE DUPLA
         if score_sem_principal < config.THRESHOLD_SEMANTICO_MINIMO:
             continue
         if query_embedding_secundaria is not None and score_sem_secundaria < config.THRESHOLD_SEMANTICO_MINIMO_SECUNDARIA:
             continue
 
-        # MÉDIA PONDERADA (Ex: 70% de peso ao tema principal e 30% ao secundário)
-        score_sem_combinado = ((score_sem_principal * config.PESO_QUERY_PRINCIPAL) + (score_sem_secundaria * config.PESO_QUERY_SECUNDARIA))
+        # MÉDIA PONDERADA
+        score_sem_combinado = ((score_sem_principal * config.PESO_QUERY_PRINCIPAL) + 
+                               (score_sem_secundaria * config.PESO_QUERY_SECUNDARIA))
 
         p = dados[idx]
 
         # ----------------------------
-        # BLOCO 4 — BOOST POR KEYWORD (NOVA LÓGICA PROGRESSIVA)
+        # BLOCO 4 — BOOST POR KEYWORD
         # ----------------------------
-        # Aqui, em vez de dar uma nota fixa 1.0 se achar qualquer palavra,
-        # nós contamos quantas palavras exatas o projeto tem.
-        
         raw_tags = p.get('keywords') or p.get('indexacao')
         tags_projeto_limpas = set()
 
-        # Se houver indexação, normaliza
         if raw_tags:
+            # Normalização de separadores
             for t in raw_tags.replace(';', ',').split(','):
-                tag_valida = validar_tag(t)
+                # validar_tag deve estar acessível aqui
+                tag_valida = validar_tag(t) if 'validar_tag' in globals() else t.strip().lower()
                 if tag_valida: tags_projeto_limpas.add(tag_valida)
 
         termos_encontrados = 0
-        
-        # Compara termos da consulta do usuário com as tags limpas do projeto
         if termos_usuario and tags_projeto_limpas:
             for tu in termos_usuario:
-                # Verifica quantos termos isolados existem nas tags
-                if any(f" {tu} " in f" {tp} " for tp in tags_projeto_limpas):
+                if any(f" {tu.lower()} " in f" {tp.lower()} " for tp in tags_projeto_limpas):
                     termos_encontrados += 1
         
-        # Aplica a pontuação com base na quantidade de acertos (Evita falsos positivos como "lago artificial")
         if termos_encontrados == 0:
             score_kw, boost_ativo = 0.0, "NAO"
         elif termos_encontrados == 1:
-            score_kw, boost_ativo = 0.5, "PARCIAL (1 Termo)" # Peso pela metade
+            score_kw, boost_ativo = 0.5, "PARCIAL (1 Termo)"
         else:
-            score_kw, boost_ativo = 1.0, f"TOTAL ({termos_encontrados} Termos)" # Boost máximo
+            score_kw, boost_ativo = 1.0, f"TOTAL ({termos_encontrados} Termos)"
             
         # ----------------------------
         # BLOCO 5 — SCORE HÍBRIDO
@@ -126,17 +111,15 @@ def processar_lote(dados, pkl_data, query_embedding, query_embedding_secundaria,
         
         if final >= config.FILTRO_THRESHOLD:
             # ----------------------------
-            # BLOCO 6 — METADADOS
+            # BLOCO 6 — METADADOS E STATUS
             # ----------------------------
             meta = {'situacao': 'Tramitando', 'ultimo_estado': '', 'data_ultimo': ''}
-            # Se houver informações de status
             if 'statusProposicao' in p:
-                st = p['statusProposicao']
-                meta['situacao'] = st.get('descricaoSituacao', 'Tramitando')
-                meta['ultimo_estado'] = st.get('descricaoTramitacao', '')
-                meta['data_ultimo'] = st.get('dataHora', '')
+                st_data = p['statusProposicao']
+                meta['situacao'] = st_data.get('descricaoSituacao', 'Tramitando')
+                meta['ultimo_estado'] = st_data.get('descricaoTramitacao', '')
+                meta['data_ultimo'] = st_data.get('dataHora', '')
 
-            # Monta dicionário final de saída
             lote_resultados.append({
                 "Norma": f"{p['siglaTipo']} {p['numero']}/{p['ano']}",
                 "Descricao da Sigla": p.get('descricaoTipo', ''),
@@ -148,14 +131,14 @@ def processar_lote(dados, pkl_data, query_embedding, query_embedding_secundaria,
                 "Link Página Web": p.get('url_pagina_web_oficial', ''),
                 "Indexacao": p.get('keywords', p.get('indexacao', '')),
                 "Último Estado": meta['ultimo_estado'],
-                "Data Último Estado": meta['data_ultimo'][:10],
+                "Data Último Estado": meta['data_ultimo'][:10] if meta['data_ultimo'] else '',
                 "Situação": meta['situacao'],
                 "Score Final": f"{final:.4f}",
                 "Boost Keyword": boost_ativo,
                 "Similaridade Semantica": f"{score_sem_combinado:.4f}",
-                # Campo interno para ordenação
                 "raw_score": final
             })
+            
     return lote_resultados
 
 # ==========================================
@@ -217,4 +200,3 @@ def executar_filtragem(consulta_usuario, consulta_secundaria, model):
     
     print(f"[SUCESSO] Filtragem concluída. {len(todos_resultados)} projetos encontrados para o novo tema.")
 
-# Remova o bloco antigo "if __name__ == '__main__':" que ficava aqui!
