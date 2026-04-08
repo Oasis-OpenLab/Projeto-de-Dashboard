@@ -3,6 +3,7 @@ import pickle
 import os
 import glob
 import config
+from sentence_transformers import SentenceTransformer
 from utils_legislativo import validar_tag
 from embeddings import get_model
 
@@ -24,7 +25,6 @@ def extrair_keywords(dados):
     """
     # Usamos set para evitar duplicatas automaticamente
     unique_keywords = set()
-
     for projeto in dados:
         # Algumas bases usam 'keywords'
         # Outras usam 'indexacao'
@@ -40,22 +40,22 @@ def extrair_keywords(dados):
     return sorted(list(unique_keywords))
 
 if __name__ == "__main__":
-    print("Carregando modelo de IA...")
+    print(f"Carregando modelo de IA...")
     # Carrega o modelo de embeddings (ex: SentenceTransformer do HuggingFace)
     model = get_model()
 
-    # Define o padrão de busca para encontrar todos os arquivos JSON da base da Câmara
+    # Busca os JSONs dentro da nova pasta
     padrao_busca = os.path.join(config.PASTA_DADOS, "camara_db_leg*.json")
     arquivos_db = glob.glob(padrao_busca)
 
-    # Itera sobre cada arquivo JSON encontrado na pasta de dados
+    # Processa cada legislatura separadamente
     for arquivo in arquivos_db:
-        # Extrai o nome do arquivo e cria um identificador único (sufixo)
-        # Exemplo: de "camara_db_leg56.json" para "leg56"
         nome_base = os.path.basename(arquivo)
+
+        # Extrai o sufixo da legislatura. Ex: camara_db_leg56.json → leg56
         sufixo = nome_base.replace("camara_db_", "").replace(".json", "")
-        
-        # Define o caminho do arquivo de cache (.pkl) onde os embeddings serão salvos
+
+        # Define nome do arquivo de cache das keywords vetorizadas
         arquivo_pkl = os.path.join(config.PASTA_DADOS, f"keywords_embeddings_{sufixo}.pkl")
 
         print(f"\nProcessando legislatura: {sufixo}")

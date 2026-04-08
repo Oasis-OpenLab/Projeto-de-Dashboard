@@ -4,7 +4,6 @@ import mysql.connector
 import sys
 import config
 import streamlit as st
-import dashboard
 
 def pesquisar():
     # --- CONFIGURAÇÃO GLOBAL DE CAMINHOS ---
@@ -44,9 +43,9 @@ def pesquisar():
         
         try:
             cnx = mysql.connector.connect(
-                host=config.HOST,
                 user=config.USUARIO,
                 password=config.SENHA,
+                host=config.HOST,
                 database=config.NOME,
                 port = config.porta,
                 ssl_ca = config.certificado
@@ -89,14 +88,6 @@ def pesquisar():
             print("Erro ao inserir dados. Verifique o arquivo insert_data.py.")
             sys.exit(1)
 
-    def abrir_dashboard():
-        print("\n>>> [4/4] Renderizando Dashboard na tela atual...")
-        print("---------------------------------------------------------")
-        try:
-            dashboard.rodar_dashboard()
-        except Exception as e:
-            st.error(f"Erro ao tentar abrir o dashboard na nuvem: {e}")
-
     def garantir_estrutura_pastas():
         print("\n>>> [0/4] Verificando estrutura de pastas...")
         pastas = [config.PASTA_DADOS, config.PASTA_CSV]
@@ -108,7 +99,6 @@ def pesquisar():
             else:
                 print(f"Pasta pronta: {pasta}")
 
-    
     try:
         print(f"--- INICIANDO PROJETO OASIS COMPLETO ---")
         print(f"Diretório base: {BASE_DIR}")
@@ -124,9 +114,6 @@ def pesquisar():
             
         # 3. Insere o CSV Limpo no Banco
         inserir_dados()
-            
-        # 4. Sobe a Interface Web
-        #abrir_dashboard()
             
     except Exception as e:
         print(f"Ocorreu um erro fatal na execução principal: {e}")

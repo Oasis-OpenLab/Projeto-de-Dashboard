@@ -9,21 +9,16 @@ import glob
 import json
 import os
 
+# --- NOVOS IMPORTS PARA O MOTOR FUNCIONAR NO PAINEL ---
+from sentence_transformers import SentenceTransformer
+import filtrador_hibrido_v3_final as motor_ia
+import insert_data as motor_banco
+
 def rodar_dashboard():
-    # ==============================================
-    # 1) CONFIGURAÇÃO BÁSICA DO APP
-    # ==============================================
-    #st.set_page_config(
-    #    page_title="Dashboard OASIS",
-    #    layout="wide"
-    #)
-
-    #st.title("🏛️ Dashboard dos Projetos de Lei - IA OASIS")
-    #st.markdown("Visualização das proposições filtradas e classificadas pela Inteligência Artificial.")
-
     # ==============================================
     # 2) CONEXÃO E FUNÇÕES AUXILIARES
     # ==============================================
+
     @st.cache_data
     def load_data(query):
         conn = mysql.connector.connect(
@@ -88,17 +83,39 @@ def rodar_dashboard():
                             "Ementa": p.get('ementa', ''),
                             "Link": p.get('url_pagina_web_oficial', '')
                         })
-                        
-        # Converte para DataFrame do Pandas para facilitar a tabela
+        # Converte para DataFrame do Pandas para facilitar a tabela              
         return pd.DataFrame(dados_completos)
 
     # ==============================================
-    # 3) SIDEBAR — FILTROS
+    # 3) INICIALIZAÇÃO DO MOTOR DE BUSCA
+    # ==============================================
+    # Congela o modelo na memória RAM para as pesquisas serem instantâneas
+    @st.cache_resource
+    def carregar_modelo_ia():
+        return SentenceTransformer(config.MODELO_NOME, device=config.dispositivo)
+
+    modelo_nlp = carregar_modelo_ia()
+
+    with open( 'banco_de_dados_local/pesquisa1.txt', 'r', encoding='utf-8') as arquivo:
+        tema_pesquisa_principal = arquivo.readline()
+        arquivo.close()
+    with open( 'banco_de_dados_local/pesquisa2.txt', 'r', encoding='utf-8') as arquivo:
+        tema_pesquisa_secundaria = arquivo.readline()
+        arquivo.close()
+
+    # 1. Manda o texto e o modelo congelado para o filtrador
+    motor_ia.executar_filtragem(tema_pesquisa_principal, tema_pesquisa_secundaria, modelo_nlp)
+            
+    # 2. Manda o insert_data apagar a tabela velha e salvar a nova
+    motor_banco.atualizar_banco_sql()
+            
+    # ==============================================
+    # 5) SIDEBAR — FILTROS DO PAINEL
     # ==============================================
     st.sidebar.header("⚙️ Filtros do Painel")
 
     # Filtro de texto para buscar pelo número exato ou parcial da norma (ex: PL 2338/2023 ou 2338)
-    numero_norma = st.sidebar.text_input("Norma", help="Permite buscar pelo número total ou parcial da proposição. Ex: 'PL 2338/2023' ou apenas '2338'.")
+    numero_norma = st.sidebar.text_input("Norma",  help="Permite buscar pelo número total ou parcial da proposição. Ex: 'PL 2338/2023' ou apenas '2338'.")
 
     # Carrega opções dinâmicas de partidos direto do banco de dados
     partidos_disponiveis = load_distinct_values("partido")
@@ -133,48 +150,48 @@ def rodar_dashboard():
     st.sidebar.markdown("---")
     ordenacao = st.sidebar.radio(
         "Ordenar resultados por:",
-        ["Relevância da IA", "Data Mais Recente"],
+        ["Relevância de Score", "Data Mais Recente"],
         help="Relevância da IA ordena pelos projetos mais alinhados ao tema analisado. Data Mais Recente mostra os projetos mais novos primeiro."
     )
 
     def build_where_clause():
         """Constrói a cláusula WHERE do SQL dinamicamente baseada nos filtros ativos."""
         clausulas = []
-        
+
         # O Python verifica o que você selecionou no botão e escolhe a coluna certa do banco
         coluna_data = "datadeapresentacao" if tipo_data == "Data de Apresentação" else "dataultimo"
-        
+
         # Exige que a data não seja nula e esteja dentro do período do calendário
         clausulas.append(f"{coluna_data} IS NOT NULL")
         clausulas.append(f"{coluna_data} BETWEEN '{data_inicio}' AND '{data_fim}'")
-        
+
         if numero_norma:
             clausulas.append(f"norma LIKE '%{numero_norma}%'")
-            
+
         if partido_filtro != "Todos":
             clausulas.append(f"partido = '{partido_filtro}'")
-            
+
         if autor_filtro:
             clausulas.append(f"autor LIKE '%{autor_filtro}%'")
-            
+
         if situacao_filtro != "Todos":
             clausulas.append(f"situacao = '{situacao_filtro}'")
-            
+
         if keyword:
             clausulas.append(f"""
             (ementa LIKE '%{keyword}%' 
             OR indexacao LIKE '%{keyword}%' 
             OR descricao LIKE '%{keyword}%')
             """)
-            
+
         return "WHERE " + " AND ".join(clausulas)
 
     # ==============================================
-    # 4) ESTRUTURA DE ABAS
+    # 6) ESTRUTURA DE ABAS
     # ==============================================
     tab_visao, tab_proposicoes, tab_busca_global = st.tabs([
         "📊 Visão Geral", 
-        "📄 Lista Filtrada (IA)", 
+        "📄 Lista Filtrada", 
         "🌐 Busca Global (Base Completa)"
     ])
 
@@ -197,33 +214,226 @@ def rodar_dashboard():
             total_partidos = df_visao['partido'].nunique()
             
             col1, col2 = st.columns(2)
-            col1.metric("Total de Projetos Relevantes (IA)", total_projetos)
+            col1.metric("Total de Projetos Filtrados", total_projetos)
             col2.metric("Partidos Envolvidos", total_partidos)
+
+            st.markdown("---")
+            # -------------------------------
+            # Gráfico: Projetos por ano
+            # -------------------------------
+            query = f"""
+                    SELECT YEAR(datadeapresentacao) AS ano, COUNT(*) AS quantidade
+                    FROM Projetos
+                    {build_where_clause()}
+                    GROUP BY YEAR(datadeapresentacao)
+                    ORDER BY ano;
+                    """
+            df = load_data(query)
+            fig = px.line(
+                df,
+                x="ano",
+                y="quantidade",
+                title = "Projetos por ano",
+                markers = True
+            )
+            fig.update_xaxes(dtick=1)
+            st.plotly_chart(fig, use_container_width=True)
+
+            st.markdown("---")
+            # -------------------------------
+            # Gráfico: Distribuição de Projetos por Partido
+            # -------------------------------
+            query = f"""
+            SELECT partido, COUNT(*) AS quantidade
+            FROM Projetos
+            {build_where_clause()}
+            AND partido IS NOT NULL AND partido <> ''
+            GROUP BY partido
+            ORDER BY quantidade DESC;
+            """
+            df = load_data(query)
+            fig = px.treemap(
+                df,
+                path=[px.Constant("Todos os Partidos"), "partido"],  # Define a hierarquia
+                values="quantidade",
+                color="quantidade",
+                color_continuous_scale="Ice",
+                title="Distribuição de Projetos por Partido"
+            )
+            # Ajustes estéticos para exibir os rótulos corretamente
+            fig.update_traces(textinfo="label+value")
+            fig.update_layout(height=600, margin=dict(t=50, l=10, r=10, b=10))
+
+            st.plotly_chart(fig, use_container_width=True)
 
             st.markdown("---")
 
             col_graf1, col_graf2 = st.columns(2)
 
             with col_graf1:
-                df_partido = df_visao.groupby('partido', as_index=False)['quantidade'].sum()
+                # -------------------------------
+                # Gráfico: Top 10 Partidos com Mais Projetos
+                # -------------------------------
+                df_partido = df_visao.groupby('partido', as_index=False)['quantidade'].sum().reset_index()
                 df_partido = df_partido.sort_values(by='quantidade', ascending=False).head(10)
-                fig1 = px.bar(df_partido, x="partido", y="quantidade",
-                            title="Top 10 Partidos com Mais Projetos",
-                            labels={"partido": "Partido", "quantidade": "Projetos"})
+                fig1 = px.bar(
+                    df_partido,
+                    x="partido",
+                    y="quantidade",
+                    title="Top 10 Partidos com Mais Projetos",
+                    labels={"partido": "Partido", "quantidade": "Projetos"}
+                )
                 st.plotly_chart(fig1, use_container_width=True)
 
             with col_graf2:
-                df_sit = df_visao.groupby('situacao', as_index=False)['quantidade'].sum()
-                fig2 = px.pie(df_sit, values="quantidade", names="situacao",
-                            title="Distribuição por Situação Atual")
+                # -------------------------------
+                # Gráfico: Distribuição por Situação Atual
+                # -------------------------------
+                # 1. Agrupa por situacao e soma a coluna quantidade
+                df_sit = df_visao.groupby('situacao')['quantidade'].sum().reset_index()
+                # 2. Agora ordena (fora do agrupamento para não dar erro de argumento)
+                df_sit = df_sit.sort_values(by="quantidade", ascending=True)
+
+                fig2 = px.bar(
+                    df_sit,
+                    x="quantidade",
+                    y="situacao",
+                    orientation="h",
+                    text="quantidade",  # Mostra o número exato na ponta da barra
+                    title="Projetos por Situação Atual",
+                    # Mesma lógica de cor: Degradê do Laranja para o Azul
+                    color="quantidade",
+                    color_continuous_scale=["#118AB2", "#FF9F1C"]
+                )
+
+                fig2.update_layout(
+                    template="plotly_dark",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    margin=dict(l=10, r=50, t=50, b=10),  # Margem lateral para o texto da esquerda não cortar
+                    height=400,
+                    showlegend=False
+                )
+
+                fig2.update_traces(
+                    textposition='outside',  # Valor numérico fora da barra
+                    marker=dict(line=dict(width=1, color="#073B4C")),
+                    cliponaxis=False  # Garante que o número na ponta da barra não seja cortado
+                )
+
+                # Remove as grades do fundo para um look mais limpo
+                fig2.update_xaxes(showgrid=False, visible=False)
+                fig2.update_yaxes(showgrid=False, title="")
+
                 st.plotly_chart(fig2, use_container_width=True)
+        st.markdown("---")
+
+        # -------------------------------
+        # Gráficos: Distribuição de Projetos por Espectro Político
+        # -------------------------------
+        st.markdown("**Distribuição de Projetos por Espectro Político**")
+        st.caption("Fonte da Classificação Partidária: Jornal Valor Econômico")
+        tab_esp_tree, tab_esp_bar = st.tabs([
+            "Mapa de Árvore", 
+            "Gráfico de Barra", 
+        ])
+
+        mapa_espectro = {
+            "AGIR": "Centro-Direita",
+            "AVANTE": "Centro",
+            "CIDADANIA": "Centro-Esquerda",
+            "DC": "Visão Independente",
+            "DEM": "Centro-Direita",
+            "MDB": "Centro",
+            "MOBILIZA": "Centro-Direita",
+            "NOVO": "Direita",
+            "PATRI": "Extrema-Direita",
+            "PCB": "Esquerda",
+            "PCdoB": "Esquerda",
+            "PCO": "Extrema-Esquerda",
+            "PDT": "Centro-Esquerda",
+            "PL": "Direita",
+            "PMB": "Centro",
+            "PODE": "Visão Independente",
+            "PP": "Centro-Direita",
+            "PPS": "Centro-Esquerda",
+            "PR": "Direita",
+            "PRB": "Centro-Direita",
+            "PRD": "Centro-Direita",
+            "PROS": "Centro",
+            "PRTB": "Direita",
+            "PSB": "Centro-Esquerda",
+            "PSC": "Direita",
+            "PSD": "Centro",
+            "PSDB": "Centro",
+            "PSL": "Direita",
+            "PSOL": "Esquerda",
+            "PSTU": "Esquerda",
+            "PT": "Esquerda",
+            "PTB": "Direita",
+            "PV": "Centro-Esquerda",
+            "REDE": "Esquerda",
+            "REPUBLICANOS": "Direita",
+            "SOLIDARIEDADE": "Centro",
+            "UNIÃO": "Centro-Direita",
+            "UP": "Esquerda"
+        }
+        cores={
+            "Não Atribuído": "#E0E0E0",
+            "Extrema-Esquerda": "#C97A7A",
+            "Esquerda": "#E89A9A",
+            "Centro-Esquerda": "#F2B6B6",
+            "Centro": "#C8B6C8",
+            "Centro-Direita": "#B6C3F2",
+            "Direita": "#8FA8E8",
+            "Extrema-Direita": "#6F88C9",
+            "Visão Independente": "#A0A0A0" 
+        }
+
+        query = f"""
+        SELECT partido, COUNT(*) AS quantidade
+        FROM Projetos
+        {build_where_clause()}
+        AND partido IS NOT NULL AND partido <> ''
+        GROUP BY partido
+        ORDER BY quantidade DESC;
+        """
+        df = load_data(query)
+        df['espectro']= df['partido'].map(mapa_espectro).fillna("Não Atribuído")
+        
+        with tab_esp_tree:
+            fig = px.treemap(
+                df,
+                path=[px.Constant("Todos os Espectros"),"espectro", "partido"],
+                values="quantidade",
+                color="espectro",
+                color_discrete_map=cores
+            )
+            fig.update_traces(
+                textinfo="label+value",
+                textfont=dict(color="black")
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
+        df_agg = df.groupby("espectro")["quantidade"].sum().reset_index()
+        df_agg = df_agg.sort_values("quantidade", ascending=False)
+        
+        with tab_esp_bar:
+            fig = px.bar(
+                df_agg,
+                x="espectro",
+                y="quantidade",
+                labels={"espectro": "Espectro Político", "quantidade": "Projetos"},
+                color="espectro",
+                color_discrete_map=cores
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
     # --- ABA 2: PROPOSIÇÕES ---
     with tab_proposicoes:
         st.subheader("Detalhamento dos Projetos")
 
-        # LÓGICA DE ORDENAÇÃO DINÂMICA
-        if ordenacao == "Relevância da IA":
+        if ordenacao == "Relevância de Score":
             ordem_sql = "ORDER BY score_relevancia DESC"
         else:
             if tipo_data == "Data de Apresentação":
@@ -234,7 +444,7 @@ def rodar_dashboard():
         # UNIÃO DO FILTRO DE PESQUISA COM A ORDEM ESCOLHIDA
         query_props = f"""
         SELECT
-            score_relevancia as "Relevância (IA)",
+            score_relevancia as "Relevância (Score)",
             norma as "Norma",
             autor as "Autor",
             partido as "Partido",
@@ -265,8 +475,8 @@ def rodar_dashboard():
 
     # --- ABA 3: BUSCA GLOBAL (BASE COMPLETA) ---
     with tab_busca_global:
-        st.subheader("🌐 Busca na Base Completa da Câmara (Sem Filtro de IA)")
-        st.markdown("Pesquise em **todos** os projetos coletados. Se o projeto tiver passado pelo funil da IA, a nota aparecerá ao lado.")
+        st.subheader("🌐 Busca na Base Completa da Câmara")
+        st.markdown("Pesquise em **todos** os projetos coletados.")
         
         busca_livre = st.text_input("🔍 Digite o número da norma (Ex: PL 2338/2023) ou uma palavra-chave para buscar na base inteira:", help="Pesquisa direta em todos os projetos coletados da Câmara, inclusive os que não passaram pelo filtro da IA.")
         
@@ -277,7 +487,7 @@ def rodar_dashboard():
                 if not df_completo.empty:
                     termo = busca_livre.lower()
                     
-                    # Filtra a base bruta
+                    # Filtra a base bruta 
                     mask = (
                         df_completo['Norma'].str.lower().str.contains(termo, na=False) |
                         df_completo['Ementa'].str.lower().str.contains(termo, na=False) |
@@ -285,7 +495,7 @@ def rodar_dashboard():
                     )
                     df_resultado = df_completo[mask].copy()
                     
-                    # CRUZAMENTO COM O BANCO DE DADOS (SCORE IA)
+                    # CRUZAMENTO COM O BANCO DE DADOS (SCORE)
                     if not df_resultado.empty:
                         try:
                             # Tenta buscar as notas do banco de dados MySQL
@@ -295,19 +505,17 @@ def rodar_dashboard():
                             df_resultado = df_resultado.merge(df_notas, left_on='Norma', right_on='norma', how='left')
                             
                             # Define o que escrever na coluna de Score
-                            df_resultado['Score IA'] = df_resultado['score_relevancia'].apply(
-                                lambda x: f"{float(x):.4f}" if pd.notnull(x) else "Barrado pela IA (< 0.40)"
+                            df_resultado['Score'] = df_resultado['score_relevancia'].apply(
+                                lambda x: f"{float(x):.4f}" if pd.notnull(x) else "Abaixo da nota de corte (< 0.40)"
                             )
                             
                             # Limpa colunas auxiliares do cruzamento
                             df_resultado = df_resultado.drop(columns=['norma', 'score_relevancia'])
                             
                         except Exception as e:
-                            # Se der erro, significa que o MySQL ainda não tem a coluna de notas
-                            df_resultado['Score IA'] = "⚠️ Pendente: Rode o main.py"
+                            df_resultado['Score'] = "⚠️ Pendente: Rode o main.py"
                         
-                        # Organiza a ordem das colunas para a nota ficar logo no começo
-                        colunas_ordenadas = ['Norma', 'Score IA', 'Data de Apresentação', 'Autor', 'Situação', 'Ementa', 'Link']
+                        colunas_ordenadas = ['Norma', 'Score', 'Data de Apresentação', 'Autor', 'Situação', 'Ementa', 'Link']
                         colunas_finais = [c for c in colunas_ordenadas if c in df_resultado.columns]
                         df_resultado = df_resultado[colunas_finais]
 
