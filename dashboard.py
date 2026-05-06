@@ -454,7 +454,8 @@ def rodar_dashboard():
             dataultimo as "Última Movimentação",        
             ultimoestado as "Descrição do Andamento",   
             ementa as "Ementa",
-            linkweb as "Link"
+            linkweb as "Link",
+            linkpdf as "Documento PDF"
         FROM Projetos
         {build_where_clause()}
         {ordem_sql}
@@ -468,7 +469,8 @@ def rodar_dashboard():
             st.dataframe(
                 df_props,
                 column_config={
-                    "Link": st.column_config.LinkColumn("Link da Câmara")
+                    "Link": st.column_config.LinkColumn("Link da Câmara"),
+                    "Documento PDF": st.column_config.LinkColumn("📄 Inteiro teor")
                 },
                 use_container_width=True,
                 hide_index=True
@@ -516,7 +518,7 @@ def rodar_dashboard():
                         except Exception as e:
                             df_resultado['Score'] = "⚠️ Pendente: Rode o main.py"
                         
-                        colunas_ordenadas = ['Norma', 'Score', 'Data de Apresentação', 'Autor', 'Situação', 'Ementa', 'Link']
+                        colunas_ordenadas = ['Norma', 'Score', 'Data de Apresentação', 'Autor', 'Situação', 'Ementa', 'Link', 'Documento PDF']
                         colunas_finais = [c for c in colunas_ordenadas if c in df_resultado.columns]
                         df_resultado = df_resultado[colunas_finais]
 
@@ -524,7 +526,8 @@ def rodar_dashboard():
                     
                     st.dataframe(
                         df_resultado,
-                        column_config={"Link": st.column_config.LinkColumn("Link da Câmara")},
+                        column_config={"Link": st.column_config.LinkColumn("Link da Câmara"),
+                        "Documento PDF": st.column_config.LinkColumn("📄 Inteiro Teor")},
                         use_container_width=True,
                         hide_index=True
                     )
