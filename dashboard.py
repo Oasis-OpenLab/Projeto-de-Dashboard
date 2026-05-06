@@ -14,6 +14,7 @@ from sentence_transformers import SentenceTransformer
 import filtrador_hibrido_v3_final as motor_ia
 import insert_data as motor_banco
 
+
 def rodar_dashboard():
     # ==============================================
     # 2) CONEXÃO E FUNÇÕES AUXILIARES

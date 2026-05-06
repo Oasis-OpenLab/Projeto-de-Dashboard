@@ -19,5 +19,6 @@ CREATE TABLE Projetos
     ultimoestado            VARCHAR(255),
     dataultimo              DATE,
     situacao                VARCHAR(255),
-    score_relevancia        DECIMAL(10,4)
+    score_relevancia        DECIMAL(10,4),
+    metodo VARCHAR(100)
 );
