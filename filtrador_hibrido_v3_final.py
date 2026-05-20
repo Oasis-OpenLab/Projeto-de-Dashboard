@@ -8,6 +8,56 @@ import config
 from utils_legislativo import limpar_ementa_para_vetorizacao, limpar_texto_basico, validar_tag
 from embeddings import get_model, get_or_create_embeddings
 
+import cohere
+import config
+import pandas as pd
+
+co = cohere.Client(config.COHERE_API_KEY)
+
+def aplicar_reranking(query, resultados_preliminares):
+    """
+    Refina os Top X resultados usando a IA da Cohere.
+    Analisa a relação real entre a pergunta e o conteúdo da ementa.
+    """
+    if not resultados_preliminares:
+        return []
+
+    # --- MUDANÇA AQUI: Criamos um texto enriquecido para a IA ler ---
+    # Combinamos a Norma, Ementa e Indexação em um único bloco de texto por projeto
+    textos_para_analise = [
+        f"PROJETO: {r['Norma']} | EMENTA: {r['Ementa']} | PALAVRAS-CHAVE: {r.get('Indexacao', '')}"
+        for r in resultados_preliminares
+    ]
+    
+    try:
+        # A chamada da API continua a mesma, mas agora ela recebe muito mais contexto
+        rerank_response = co.rerank(
+            query=query,
+            documents=textos_para_analise,
+            top_n=config.TOP_K_RERANK,
+            model="rerank-multilingual-v3.0"
+        )
+
+        resultados_refinados = []
+        for hit in rerank_response.results:
+            # Recuperamos o projeto original pelo índice retornado pela API
+            projeto = resultados_preliminares[hit.index]
+            
+            # Atualizamos o score com a nota de relevância da IA Especialista
+            projeto['Score Final'] = f"{hit.relevance_score:.4f}"
+            projeto['Metodo'] = "IA Especialista (Rerank)"
+            
+            # Guardamos o valor numérico para que a ordenação seja mantida
+            projeto['raw_score'] = hit.relevance_score
+            resultados_refinados.append(projeto)
+            
+        return resultados_refinados
+
+    except Exception as e:
+        # Se a API falhar (ex: sem internet), o sistema não trava
+        print(f"⚠️ Aviso: Falha no Re-ranking ({e}). Mantendo ordem original.")
+        return resultados_preliminares
+
 NOME_ARQUIVO_SAIDA = os.path.join(config.PASTA_CSV, "proposicoes_camara_resumo.csv")
 
 def processar_lote(dados, pkl_data, query_embedding, query_embedding_secundaria, termos_usuario, model, sufixo_leg):
@@ -180,23 +230,36 @@ def executar_filtragem(consulta_usuario, consulta_secundaria, model):
             todos_resultados.extend(resultados_lote)
             del dados, pkl, resultados_lote
 
-    # 4. Ordena os vencedores pela nota bruta da IA
-    todos_resultados = sorted(todos_resultados, key=lambda x: x['raw_score'], reverse=True)
+# 4. Ordenação e Re-ranking
+    # Ordena o que o Bi-Encoder achou (Top K iniciais)
+    todos_resultados.sort(key=lambda x: x['raw_score'], reverse=True)
+    
+    # Seleciona os candidatos para a IA Especialista
+    candidatos = todos_resultados[:config.TOP_K_RERANK]
 
+    # Chama a API da Cohere para refinar a ordem
+    print(f"Refinando os {len(candidatos)} melhores com IA Especialista...")
+    resultados_finais = aplicar_reranking(consulta_usuario, candidatos)
+
+    # 5. Preparação para Salvamento
     colunas = [
         "Norma", "Descricao da Sigla", "Data de Apresentacao", "Autor", "Partido", "Ementa", 
         "Link Documento PDF", "Link Página Web", "Indexacao", "Último Estado", "Data Último Estado", 
-        "Situação", "Score Final", "Boost Keyword", "Similaridade Semantica"
+        "Situação", "Score Final", "Boost Keyword", "Similaridade Semantica", "Metodo"
     ]
 
+    # Garante que a pasta existe
     pasta_destino = os.path.dirname(NOME_ARQUIVO_SAIDA)
-    if pasta_destino and not os.path.exists(pasta_destino): os.makedirs(pasta_destino)
+    if pasta_destino and not os.path.exists(pasta_destino): 
+        os.makedirs(pasta_destino)
 
-    # 5. Sobrescreve o arquivo CSV antigo com os novos resultados
+    # 6. Salva o CSV com os resultados REORDENADOS (resultados_finais)
+    # Usamos o encoding utf-8-sig para que o Excel abra os acentos corretamente
     with open(NOME_ARQUIVO_SAIDA, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=colunas, extrasaction='ignore', delimiter=';')
         writer.writeheader()
-        writer.writerows(todos_resultados)
+        writer.writerows(resultados_finais) # <-- Importante: salvando a lista refinada
     
-    print(f"[SUCESSO] Filtragem concluída. {len(todos_resultados)} projetos encontrados para o novo tema.")
+    print(f"[SUCESSO] Re-ranking concluído. {len(resultados_finais)} projetos refinados salvos.")
+    return resultados_finais
 

@@ -4,6 +4,19 @@ import torch  # <-- NOVO IMPORT AQUI
 import streamlit as st
 import tempfile
 
+import streamlit as st
+
+# --- CONFIGURAÇÕES EXISTENTES (Manter o que já tem) ---
+# ... (Seu código de CPU/GPU/Paths) ...
+
+# --- NOVO: CONFIGURAÇÃO PARA RE-RANKING (COHERE) ---
+# Carrega a chave de forma segura dos segredos do Streamlit
+COHERE_API_KEY = st.secrets["COHERE_API_KEY"]
+
+# TOP_K_RERANK: Define quantos projetos o Bi-Encoder enviará para o Re-ranking.
+TOP_K_RERANK = 50
+
+
 # --- MAPEAMENTO INTELIGENTE DE PASTAS ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PASTA_DADOS = os.path.join(BASE_DIR, "banco_de_dados_local")
