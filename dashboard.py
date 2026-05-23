@@ -430,7 +430,7 @@ def rodar_dashboard():
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    # --- ABA 2: PROPOSIÇÕES ---
+    # --- ABA 2: PROPOSIÇÕES (Consulta ao Banco de Dados) ---
     with tab_proposicoes:
         st.subheader("Detalhamento dos Projetos")
 
@@ -466,15 +466,57 @@ def rodar_dashboard():
         if df_props.empty:
             st.warning("Nenhuma proposição encontrada com esses filtros.")
         else:
-            st.dataframe(
+            # Função do Modal (Janela Pequena) para a Aba 2
+            @st.dialog("Histórico de Tramitação", width="large")
+            def mostrar_modal_tramitacao_aba2(linha):
+                # Cabeçalho com o número/ano da Norma
+                st.markdown(f"### 📑 {linha['Norma']}")
+                
+                # NOVO: Autor e Partido na mesma linha e formato: nome autor - sigla partido
+                st.markdown(f"### **Autor:** {linha['Autor']} - {linha['Partido']}")
+                
+                # Ementa do projeto
+                st.caption(f"**Ementa:** {linha['Ementa']}")
+                st.markdown("---")
+                
+                # Bloco de Situação Atual
+                st.markdown("#### 📍 Situação Atual")
+                st.info(f"**{linha['Situação']}** — {linha['Descrição do Andamento']}")
+                st.markdown("---")
+                
+                # NOVO: Seção dedicada aos links oficiais do projeto
+                st.markdown("#### 🔗 Documentos e Links Oficiais")
+                col_link1, col_link2 = st.columns(2)
+                with col_link1:
+                    st.link_button("🌐 Portal da Câmara (Ficha)", linha['Link'], use_container_width=True)
+                with col_link2:
+                    st.link_button("📄 Íntegra do Projeto (PDF)", linha['Documento PDF'], use_container_width=True)
+                st.markdown("---")
+                
+                # Histórico e Linha do tempo visual
+                st.markdown("#### 🕒 Histórico de Movimentações")
+                st.markdown(f"**🟢 {linha['Última Movimentação']}**\n└ *{linha['Descrição do Andamento']}*")
+                st.markdown("<div style='padding-left: 20px; border-left: 2px dashed #118AB2; margin: 10px 0;'>Tramitação em andamento...</div>", unsafe_allow_html=True)
+                st.markdown(f"**⚪ {linha['Data Apresentação']}**\n└ *Proposição apresentada na Câmara dos Deputados.*")
+
+            # Voltar a renderizar com a seleção por LINHA inteira (Gera o checkbox na extrema esquerda)
+            evento_selecao_aba2 = st.dataframe(
                 df_props,
                 column_config={
                     "Link": st.column_config.LinkColumn("Link da Câmara"),
                     "Documento PDF": st.column_config.LinkColumn("📄 Inteiro teor")
                 },
                 use_container_width=True,
-                hide_index=True
+                hide_index=True,
+                on_select="rerun",
+                selection_mode="single-row" # <-- Reativado: Traz de volta o checkbox padrão
             )
+
+            # Detecta se o checkbox da linha foi marcado e abre o modal correspondente
+            if evento_selecao_aba2 and evento_selecao_aba2["selection"]["rows"]:
+                idx_linha = evento_selecao_aba2["selection"]["rows"][0]
+                linha_selecionada = df_props.iloc[idx_linha]
+                mostrar_modal_tramitacao_aba2(linha_selecionada)
 
     # --- ABA 3: BUSCA GLOBAL (BASE COMPLETA) ---
     with tab_busca_global:
