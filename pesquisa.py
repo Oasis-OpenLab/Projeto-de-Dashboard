@@ -80,7 +80,7 @@ def pesquisar():
             sys.exit(1)
 
     def inserir_dados():
-        print("\n>>> [3/4] Inserindo dados filtrados no SQL (insert_data.py)...")
+        print("\n>>> [3/5] Inserindo dados filtrados no SQL (insert_data.py)...")
         script_path = obter_caminho("insert_data.py")
         try:
             subprocess.run([sys.executable, script_path], check=True, cwd=BASE_DIR)
@@ -88,8 +88,17 @@ def pesquisar():
             print("Erro ao inserir dados. Verifique o arquivo insert_data.py.")
             sys.exit(1)
 
+    def atualizar_tramitacoes():
+        print("\n>>> [4/5] Atualizando cache de tramitações (atualizar_tramitacoes_avulso.py)...")
+        script_path = obter_caminho("atualizar_tramitacoes_avulso.py")
+        try:
+            subprocess.run([sys.executable, script_path], check=True, cwd=BASE_DIR)
+        except subprocess.CalledProcessError:
+            print("Erro ao atualizar tramitações. Verifique o arquivo atualizar_tramitacoes_avulso.py.")
+            sys.exit(1)
+
     def garantir_estrutura_pastas():
-        print("\n>>> [0/4] Verificando estrutura de pastas...")
+        print("\n>>> [0/5] Verificando estrutura de pastas...")
         pastas = [config.PASTA_DADOS, config.PASTA_CSV]
         
         for pasta in pastas:
@@ -109,11 +118,14 @@ def pesquisar():
         # 1. Coleta, Vetoriza e Filtra (Pipeline Híbrido)
         executar_api()
             
-        # 2. Reseta as Tabelas do Banco
-        recriar_banco()
+        # 2. Reseta as Tabelas do Banco (Desativado pois já fazemos no insert_data)
+        # recriar_banco()
             
         # 3. Insere o CSV Limpo no Banco
         inserir_dados()
+
+        # 4. Busca o histórico de tramitações no JSON e insere no Banco
+        atualizar_tramitacoes()
             
     except Exception as e:
         print(f"Ocorreu um erro fatal na execução principal: {e}")

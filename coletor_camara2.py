@@ -156,6 +156,87 @@ def obter_detalhes_e_separar(lista_ids):
     with open(ARQUIVO_CACHE_PARTIDOS, 'w', encoding='utf-8') as f: json.dump(cache_autores, f, ensure_ascii=False)
     return bancos_separados
 
+def atualizar_historico_tramitacoes():
+    """Baixa o histórico de TODOS os projetos locais em paralelo (Multithreading) para o MySQL/JSON."""
+    print("🔄 Iniciando sincronização GLOBAL de históricos em arquivos JSON locais...")
+    
+    padrao_busca = os.path.join(config.PASTA_DADOS, "camara_db_leg*.json")
+    arquivos_json = glob.glob(padrao_busca)
+    
+    projetos_para_atualizar = []
+    ids_mapeados = set()
+    
+    for arquivo in arquivos_json:
+        if os.path.exists(arquivo):
+            with open(arquivo, 'r', encoding='utf-8') as f:
+                dados = json.load(f)
+                for p in dados:
+                    id_oficial = p.get('id')
+                    norma_string = f"{p.get('siglaTipo', '')} {p.get('numero', '')}/{p.get('ano', '')}".upper().strip()
+                    if id_oficial and norma_string and id_oficial not in ids_mapeados:
+                        ids_mapeados.add(id_oficial)
+                        projetos_para_atualizar.append((id_oficial, norma_string))
+
+    total_projetos = len(projetos_para_atualizar)
+    if total_projetos == 0:
+        print("⚠️ Nenhum projeto localizado nos arquivos JSON locais.")
+        return
+
+    arquivo_historico_json = os.path.join(config.PASTA_DADOS, "camara_tramitacoes_cache.json")
+    
+    cache_historico_completo = {}
+    if os.path.exists(arquivo_historico_json):
+        with open(arquivo_historico_json, 'r', encoding='utf-8') as f:
+            try:
+                cache_historico_completo = json.load(f)
+            except:
+                cache_historico_completo = {}
+
+    print(f"🚀 Iniciando download PARALELO (Multithreading) de {total_projetos} históricos para o arquivo JSON...")
+
+    def baixar_historico_json(id_camara, norma):
+        url = f"https://dadosabertos.camara.leg.br/api/v2/proposicoes/{id_camara}/tramitacoes"
+        try:
+            resposta = requests.get(url, timeout=10)
+            if resposta.status_code == 200:
+                dados_api = resposta.json().get('dados', [])
+                dados_ordenados = sorted(dados_api, key=lambda k: k.get('sequencia', 0), reverse=True)
+                
+                lista_tramitacoes_projeto = []
+                for t in dados_ordenados:
+                    lista_tramitacoes_projeto.append({
+                        "data_tramitacao": t.get('dataHora', '')[:10] if t.get('dataHora') else None,
+                        "sequencia": t.get('sequencia'),
+                        "orgao": t.get('siglaOrgao', 'Plenário'),
+                        "descricao_tramitacao": t.get('descricaoTramitacao', 'Sem descrição'),
+                        "situacao_tramitacao": t.get('descricaoSituacao', 'Não informada'),
+                        "apreciacao": t.get('apreciacao', 'Não informada'),
+                        "despacho": t.get('despacho', 'Sem despacho registrado')
+                    })
+                return norma, lista_tramitacoes_projeto
+        except Exception as e:
+            print(f"⚠️ Falha na norma {norma} (ID: {id_camara}): {e}")
+        return norma, None
+
+    processados = 0
+    with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
+        futuros = {executor.submit(baixar_historico_json, pid, item_norma): item_norma for pid, item_norma in projetos_para_atualizar}
+        
+        for futuro in concurrent.futures.as_completed(futuros):
+            processados += 1
+            norma_chave, resultado_tramitacoes = futuro.result()
+            
+            if resultado_tramitacoes is not None:
+                cache_historico_completo[norma_chave] = resultado_tramitacoes
+                
+            if processados % 50 == 0 or processados == total_projetos:
+                print(f"📶 Progresso Global: [{processados}/{total_projetos}] históricos em cache...", flush=True)
+
+    with open(arquivo_historico_json, 'w', encoding='utf-8') as f:
+        json.dump(cache_historico_completo, f, indent=4, ensure_ascii=False)
+
+    print("✅ Base de dados de históricos completamente populada e congelada em JSON!")
+
 # ==========================================================
 # FUNÇÃO DE EXECUÇÃO EXPORTÁVEL (Para uso no Streamlit)
 # ==========================================================
@@ -206,6 +287,13 @@ def executar_coleta_incremental():
 
     with open(ARQUIVO_METADADOS, 'w', encoding='utf-8') as f:
         json.dump({"ultima_coleta": hoje.strftime("%Y-%m-%d")}, f)
+
+    # NOVO: Dispara a população automática do histórico
+    try:
+        atualizar_historico_tramitacoes()
+    except Exception as e:
+        print(f"⚠️ Alerta: Não foi possível sincronizar o histórico de andamentos: {e}")
+
 
 # ==========================================================
 # BLOCO DE EXECUÇÃO DIRETA

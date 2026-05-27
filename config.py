@@ -31,7 +31,7 @@ porta = st.secrets["PORTA"]
 
 # 2. CONFIGURAÇÕES GERAIS DA IA E HARDWARE
 
-DATA_INICIO_COLETA = datetime(2015, 1, 1) 
+DATA_INICIO_COLETA = datetime(2024, 1, 1) 
 MODELO_NOME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 # --- NOVO: DETECÇÃO AUTOMÁTICA DE HARDWARE ---
@@ -50,7 +50,7 @@ with tempfile.NamedTemporaryFile(delete=False) as tmp:
 
 # --- NOVO: INTERRUPTOR DA API ---
 # True = Conecta na Câmara e baixa projetos novos. False = Usa só o que já tem salvo (Muito mais rápido!)
-ATUALIZAR_BASE_API = False 
+ATUALIZAR_BASE_API = False
 
 # 3. PESOS E NOTAS DE CORTE DO FILTRO HÍBRIDO
 PESO_SEMANTICO = 0.8
