@@ -171,6 +171,7 @@ def processar_lote(dados, pkl_data, query_embedding, query_embedding_secundaria,
                 meta['data_ultimo'] = st_data.get('dataHora', '')
 
             lote_resultados.append({
+                "ID Proposicao": p.get('id', ''),
                 "Norma": f"{p['siglaTipo']} {p['numero']}/{p['ano']}",
                 "Descricao da Sigla": p.get('descricaoTipo', ''),
                 "Data de Apresentacao": p.get('dataApresentacao', '')[:10],
@@ -243,7 +244,7 @@ def executar_filtragem(consulta_usuario, consulta_secundaria, model):
 
     # 5. Preparação para Salvamento
     colunas = [
-        "Norma", "Descricao da Sigla", "Data de Apresentacao", "Autor", "Partido", "Ementa", 
+        "ID Proposicao", "Norma", "Descricao da Sigla", "Data de Apresentacao", "Autor", "Partido", "Ementa", 
         "Link Documento PDF", "Link Página Web", "Indexacao", "Último Estado", "Data Último Estado", 
         "Situação", "Score Final", "Boost Keyword", "Similaridade Semantica", "Metodo"
     ]

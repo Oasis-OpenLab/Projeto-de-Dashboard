@@ -14,9 +14,30 @@ def atualizar_banco_sql():
     cnx = mysql.connector.connect(user=config.USUARIO, password=config.SENHA, host=config.HOST, database=config.NOME, port = config.porta, ssl_ca = config.certificado)
     cursor = cnx.cursor()
 
-    # --- NOVO: LIMPEZA DO BANCO ---
-    # Apaga os dados da pesquisa velha para não misturar assuntos no Dashboard
-    cursor.execute("TRUNCATE TABLE Projetos")
+   # --- NOVO: LIMPEZA DO BANCO COM PROTEÇÃO ---
+    # Desativa temporariamente as restrições de chaves para permitir a limpeza limpa
+    cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
+    cursor.execute("TRUNCATE TABLE Projetos;")
+    
+    # 1. FORÇA a exclusão da tabela antiga para atualizar o formato das colunas!
+    cursor.execute("DROP TABLE IF EXISTS Tramitacoes;")
+    
+    # 2. Recria a tabela com as colunas novas
+    sql_criar_tabela_tramitacoes = """
+    CREATE TABLE Tramitacoes (
+        id_tramitacao INT AUTO_INCREMENT PRIMARY KEY,
+        norma VARCHAR(255),
+        data_tramitacao DATE,
+        sequencia INT,
+        orgao VARCHAR(100),
+        descricao_tramitacao TEXT,
+        situacao_tramitacao VARCHAR(255),
+        apreciacao VARCHAR(255),
+        despacho TEXT
+    );
+    """
+    cursor.execute(sql_criar_tabela_tramitacoes)
+    cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
     cnx.commit()
 
     # Mapeia Nomes do CSV (Chave) para Nomes do Banco (Valor)
@@ -24,7 +45,7 @@ def atualizar_banco_sql():
         "Norma": "norma", "Descricao da Sigla": "descricao", 'Data de Apresentacao': 'datadeapresentacao',
         "Autor": "autor", "Partido": "partido", "Ementa": "ementa", "Link Documento PDF": "linkpdf",
         "Link Página Web": "linkweb", "Indexacao": "indexacao", "Último Estado": "ultimoestado",
-        "Data Último Estado": "dataultimo", "Situação": "situacao", "Score Final": "score_relevancia","Metodo": "metodo"
+        "Data Último Estado": "dataultimo", "Situação": "situacao", "Score Final": "score_relevancia","Metodo": "metodo", "ID Proposicao": "id_proposicao"
     }
 
     csv_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'projetos_em_csv', 'proposicoes_camara_resumo.csv')

@@ -1,9 +1,10 @@
 import streamlit as st
-import mysql.connector
 import pandas as pd
 import plotly.express as px
 from datetime import date
 import config
+
+import mysql.connector
 
 import glob
 import json
@@ -14,68 +15,55 @@ from sentence_transformers import SentenceTransformer
 import filtrador_hibrido_v3_final as motor_ia
 import insert_data as motor_banco
 
-
 def rodar_dashboard():
     # ==============================================
-    # 2) CONEXÃO E FUNÇÕES AUXILIARES
+    # 2) CONEXÃO E FUNÇÕES AUXILIARES (PANDAS ONLY)
     # ==============================================
 
     @st.cache_data
-    def load_data(query):
-        conn = mysql.connector.connect(
-            host=config.HOST,
-            user=config.USUARIO,
-            password=config.SENHA,
-            database=config.NOME,
-            port = config.porta,
-            ssl_ca = config.certificado
-        )
-        return pd.read_sql(query, conn)
+    def load_data():
+        """Lê o arquivo CSV processado localmente."""
+        csv_file_path = os.path.join("projetos_em_csv", "proposicoes_camara_resumo.csv")
+        if os.path.exists(csv_file_path):
+            df = pd.read_csv(csv_file_path, delimiter=";")
+            # Padroniza nomes das colunas para minúsculo sem espaços
+            df.columns = [str(c).lower().replace(" ", "").replace("ç", "c").replace("ã", "a").replace("á", "a").replace("ú", "u") for c in df.columns]
+            return df
+        return pd.DataFrame()
+
+    df_csv_completo = load_data()
 
     @st.cache_data
     def load_distinct_values(coluna):
-        query = f"""
-        SELECT DISTINCT {coluna}
-        FROM Projetos
-        WHERE {coluna} IS NOT NULL AND {coluna} <> ''
-        ORDER BY {coluna};
-        """
-        try:
-            df = load_data(query)
-            return ["Todos"] + df[coluna].tolist()
-        except:
-            return ["Todos"]
+        """Busca os valores únicos direto do DataFrame Pandas."""
+        if not df_csv_completo.empty and coluna in df_csv_completo.columns:
+            valores = df_csv_completo[coluna].dropna().unique().tolist()
+            return ["Todos"] + sorted(valores)
+        return ["Todos"]
 
     @st.cache_data
     def load_min_date():
-        query = "SELECT MIN(datadeapresentacao) AS min_date FROM Projetos;"
-        try:
-            df = load_data(query)
-            if not df.empty and pd.notnull(df.iloc[0]['min_date']):
-                return df.iloc[0]['min_date']
-        except:
-            pass
+        """Busca a menor data direto do DataFrame Pandas."""
+        if not df_csv_completo.empty and 'datadeapresentacao' in df_csv_completo.columns:
+            min_val = pd.to_datetime(df_csv_completo['datadeapresentacao'], errors='coerce').min()
+            if pd.notnull(min_val):
+                return min_val.date()
         return date(2000, 1, 1)
 
     @st.cache_data
     def load_base_completa():
-        """Lê todos os JSONs brutos da Câmara e transforma num DataFrame para busca rápida."""
+        """Lê todos os JSONs brutos da Câmara."""
         padrao = os.path.join(config.PASTA_DADOS, "camara_db_leg*.json")
         arquivos = glob.glob(padrao)
-        
         dados_completos = []
         for arquivo in arquivos:
             if os.path.exists(arquivo):
                 with open(arquivo, 'r', encoding='utf-8') as f:
                     dados = json.load(f)
                     for p in dados:
-                        # Monta o número da norma (ex: PL 123/2023)
                         norma = f"{p.get('siglaTipo', '')} {p.get('numero', '')}/{p.get('ano', '')}"
-                        
-                        # Pega a situação atual de forma segura
                         status = p.get('statusProposicao', {})
                         if not isinstance(status, dict): status = {}
-                        
                         dados_completos.append({
                             "Norma": norma,
                             "Data de Apresentação": p.get('dataApresentacao', '')[:10] if p.get('dataApresentacao') else '',
@@ -84,30 +72,64 @@ def rodar_dashboard():
                             "Ementa": p.get('ementa', ''),
                             "Link": p.get('url_pagina_web_oficial', '')
                         })
-        # Converte para DataFrame do Pandas para facilitar a tabela              
         return pd.DataFrame(dados_completos)
+    
+    #@st.cache_data(ttl=300) # Cache de 5 minutos para não travar o banco
+    def buscar_tramitacoes_banco(norma):
+        # Limpa espaços em branco e garante letras maiúsculas para o "match" perfeito
+        norma_limpa = str(norma).upper().strip()
+        df = pd.DataFrame()
+        
+        # TENTATIVA 1: Busca no Banco de Dados MySQL
+        try:
+            conn = mysql.connector.connect(
+                host=config.HOST,
+                user=config.USUARIO,
+                password=config.SENHA,
+                database=config.NOME,
+                port=config.porta,
+                ssl_ca=config.certificado
+            )
+            # Usa TRIM e UPPER no SQL para ignorar qualquer diferença de digitação
+            query = "SELECT data_tramitacao, orgao, descricao_tramitacao, sequencia, situacao_tramitacao, apreciacao, despacho FROM Tramitacoes WHERE TRIM(UPPER(norma)) = %s ORDER BY sequencia DESC"
+            df = pd.read_sql(query, conn, params=(norma_limpa,))
+            conn.close()
+        except Exception as e:
+            print(f"Erro ao buscar no banco: {e}")
+
+        # TENTATIVA 2 (INFALÍVEL): Se o banco estiver vazio, lê o histórico direto do JSON!
+        if df.empty:
+            try:
+                caminho_cache = os.path.join(config.PASTA_DADOS, "camara_tramitacoes_cache.json")
+                if os.path.exists(caminho_cache):
+                    with open(caminho_cache, 'r', encoding='utf-8') as f:
+                        cache_json = json.load(f)
+                        # Verifica se a norma existe nas chaves do JSON
+                        if norma_limpa in cache_json:
+                            df = pd.DataFrame(cache_json[norma_limpa])
+                            if not df.empty:
+                                # Ordena da mais recente para a mais antiga
+                                df = df.sort_values(by='sequencia', ascending=False)
+            except Exception as e:
+                print(f"Erro ao ler JSON: {e}")
+                
+        return df
 
     # ==============================================
     # 3) INICIALIZAÇÃO DO MOTOR DE BUSCA
     # ==============================================
-    # Congela o modelo na memória RAM para as pesquisas serem instantâneas
     @st.cache_resource
     def carregar_modelo_ia():
         return SentenceTransformer(config.MODELO_NOME, device=config.dispositivo)
 
     modelo_nlp = carregar_modelo_ia()
 
-    with open( 'banco_de_dados_local/pesquisa1.txt', 'r', encoding='utf-8') as arquivo:
+    with open('banco_de_dados_local/pesquisa1.txt', 'r', encoding='utf-8') as arquivo:
         tema_pesquisa_principal = arquivo.readline()
-        arquivo.close()
-    with open( 'banco_de_dados_local/pesquisa2.txt', 'r', encoding='utf-8') as arquivo:
+    with open('banco_de_dados_local/pesquisa2.txt', 'r', encoding='utf-8') as arquivo:
         tema_pesquisa_secundaria = arquivo.readline()
-        arquivo.close()
 
-    # 1. Manda o texto e o modelo congelado para o filtrador
     motor_ia.executar_filtragem(tema_pesquisa_principal, tema_pesquisa_secundaria, modelo_nlp)
-            
-    # 2. Manda o insert_data apagar a tabela velha e salvar a nova
     motor_banco.atualizar_banco_sql()
             
     # ==============================================
@@ -115,77 +137,61 @@ def rodar_dashboard():
     # ==============================================
     st.sidebar.header("⚙️ Filtros do Painel")
 
-    # Filtro de texto para buscar pelo número exato ou parcial da norma (ex: PL 2338/2023 ou 2338)
-    numero_norma = st.sidebar.text_input("Norma",  help="Permite buscar pelo número total ou parcial da proposição. Ex: 'PL 2338/2023' ou apenas '2338'.")
-
-    # Carrega opções dinâmicas de partidos direto do banco de dados
+    numero_norma = st.sidebar.text_input("Norma",  help="Permite buscar pelo número total ou parcial.")
+    
     partidos_disponiveis = load_distinct_values("partido")
-    partido_filtro = st.sidebar.selectbox("Partido do Autor", partidos_disponiveis, help="Filtra projetos de lei de acordo com o partido do autor principal da proposição.")
+    partido_filtro = st.sidebar.selectbox("Partido do Autor", partidos_disponiveis)
 
-    # Filtro de texto para buscar pelo nome ou sobrenome do autor
-    autor_filtro = st.sidebar.text_input("Autor", help="Busca projetos pelo nome ou sobrenome do autor da proposição.")
+    autor_filtro = st.sidebar.text_input("Autor")
 
-    # Carrega as situações atuais possíveis (Tramitando, Arquivada, etc.)
     situacoes_disponiveis = load_distinct_values("situacao")
-    situacao_filtro = st.sidebar.selectbox("Situação da Proposição", situacoes_disponiveis, help="Mostra apenas projetos que estejam na situação selecionada (ex: Tramitando, Arquivado, Aprovado).")
+    situacao_filtro = st.sidebar.selectbox("Situação da Proposição", situacoes_disponiveis)
 
-    # Busca textual ampla em ementa, indexação ou descrição
-    keyword = st.sidebar.text_input("Palavra-chave extra (Opcional)", help="Busca termos específicos dentro da ementa, indexação e descrição técnica do projeto.")
+    keyword = st.sidebar.text_input("Palavra-chave extra (Opcional)")
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("**Filtro de Período**")
 
-    # Define se o período escolhido abaixo se refere ao nascimento do projeto ou ao seu último andamento
-    tipo_data = st.sidebar.radio(
-        "Filtrar período pela:",
-        ["Data de Apresentação", "Última Movimentação"],
-        help="Define se o período selecionado considera a criação do projeto ou sua última atualização na Câmara."
-    )
+    tipo_data = st.sidebar.radio("Filtrar período pela:", ["Data de Apresentação", "Última Movimentação"])
 
-    # Pega a data mais antiga do banco para o limite do calendário
     min_data_db = load_min_date()
-    data_inicio = st.sidebar.date_input("Data Início", min_data_db, help="Mostra apenas projetos a partir desta data.")
-    data_fim = st.sidebar.date_input("Data Fim", date.today(), help="Mostra apenas projetos até esta data.")
+    data_inicio = st.sidebar.date_input("Data Início", min_data_db)
+    data_fim = st.sidebar.date_input("Data Fim", date.today())
 
-    # Define como a tabela principal será classificada visualmente para o usuário
     st.sidebar.markdown("---")
-    ordenacao = st.sidebar.radio(
-        "Ordenar resultados por:",
-        ["Relevância de Score", "Data Mais Recente"],
-        help="Relevância da IA ordena pelos projetos mais alinhados ao tema analisado. Data Mais Recente mostra os projetos mais novos primeiro."
-    )
+    ordenacao = st.sidebar.radio("Ordenar resultados por:", ["Relevância de Score", "Data Mais Recente"])
 
-    def build_where_clause():
-        """Constrói a cláusula WHERE do SQL dinamicamente baseada nos filtros ativos."""
-        clausulas = []
+    def filtrar_dataframe_via_pandas():
+        """Aplica os filtros da Sidebar diretamente no CSV sem usar Banco de Dados."""
+        if df_csv_completo.empty:
+            return df_csv_completo
+        df = df_csv_completo.copy()
+        
+        # Filtro Data
+        coluna_data = "datadeapresentacao" if tipo_data == "Data de Apresentação" else "dataultimoestado"
+        if coluna_data in df.columns:
+            df[coluna_data] = pd.to_datetime(df[coluna_data], errors='coerce').dt.date
+            df = df[(df[coluna_data] >= data_inicio) & (df[coluna_data] <= data_fim)]
 
-        # O Python verifica o que você selecionou no botão e escolhe a coluna certa do banco
-        coluna_data = "datadeapresentacao" if tipo_data == "Data de Apresentação" else "dataultimo"
-
-        # Exige que a data não seja nula e esteja dentro do período do calendário
-        clausulas.append(f"{coluna_data} IS NOT NULL")
-        clausulas.append(f"{coluna_data} BETWEEN '{data_inicio}' AND '{data_fim}'")
-
-        if numero_norma:
-            clausulas.append(f"norma LIKE '%{numero_norma}%'")
-
-        if partido_filtro != "Todos":
-            clausulas.append(f"partido = '{partido_filtro}'")
-
-        if autor_filtro:
-            clausulas.append(f"autor LIKE '%{autor_filtro}%'")
-
-        if situacao_filtro != "Todos":
-            clausulas.append(f"situacao = '{situacao_filtro}'")
-
+        # Filtros texto e selects
+        if numero_norma and 'norma' in df.columns:
+            df = df[df['norma'].astype(str).str.contains(numero_norma, case=False, na=False)]
+        if partido_filtro != "Todos" and 'partido' in df.columns:
+            df = df[df['partido'] == partido_filtro]
+        if autor_filtro and 'autor' in df.columns:
+            df = df[df['autor'].astype(str).str.contains(autor_filtro, case=False, na=False)]
+        if situacao_filtro != "Todos" and 'situacao' in df.columns:
+            df = df[df['situacao'] == situacao_filtro]
+        
+        # Filtro palavra-chave (ementa, indexacao, descricao)
         if keyword:
-            clausulas.append(f"""
-            (ementa LIKE '%{keyword}%' 
-            OR indexacao LIKE '%{keyword}%' 
-            OR descricao LIKE '%{keyword}%')
-            """)
-
-        return "WHERE " + " AND ".join(clausulas)
+            mask = pd.Series(False, index=df.index)
+            for col in ['ementa', 'indexacao', 'descricao']:
+                if col in df.columns:
+                    mask = mask | df[col].astype(str).str.contains(keyword, case=False, na=False)
+            df = df[mask]
+            
+        return df
 
     # ==============================================
     # 6) ESTRUTURA DE ABAS
@@ -193,154 +199,63 @@ def rodar_dashboard():
     tab_visao, tab_proposicoes, tab_busca_global = st.tabs([
         "📊 Visão Geral", 
         "📄 Lista Filtrada", 
-        "🌐 Busca Global (Base Completa)"
+        "🌐 Busca Global"
     ])
 
     # --- ABA 1: VISÃO GERAL ---
     with tab_visao:
         st.subheader("Métricas do Tema Filtrado")
 
-        query_visao = f"""
-        SELECT partido, situacao, COUNT(*) as quantidade
-        FROM Projetos
-        {build_where_clause()}
-        GROUP BY partido, situacao
-        """
-        df_visao = load_data(query_visao)
+        df_visao = filtrar_dataframe_via_pandas()
 
         if df_visao.empty:
             st.warning("Nenhum dado encontrado com os filtros atuais.")
         else:
-            total_projetos = int(df_visao['quantidade'].sum())
-            total_partidos = df_visao['partido'].nunique()
+            total_projetos = len(df_visao)
+            total_partidos = df_visao['partido'].nunique() if 'partido' in df_visao.columns else 0
             
             col1, col2 = st.columns(2)
             col1.metric("Total de Projetos Filtrados", total_projetos)
             col2.metric("Partidos Envolvidos", total_partidos)
-
             st.markdown("---")
-            # -------------------------------
+
             # Gráfico: Projetos por ano
-            # -------------------------------
-            query = f"""
-                    SELECT YEAR(datadeapresentacao) AS ano, COUNT(*) AS quantidade
-                    FROM Projetos
-                    {build_where_clause()}
-                    GROUP BY YEAR(datadeapresentacao)
-                    ORDER BY ano;
-                    """
-            df = load_data(query)
-            fig = px.line(
-                df,
-                x="ano",
-                y="quantidade",
-                title = "Projetos por ano",
-                markers = True
-            )
-            fig.update_xaxes(dtick=1)
-            st.plotly_chart(fig, use_container_width=True)
+            if 'datadeapresentacao' in df_visao.columns:
+                df_ano = df_visao.copy()
+                df_ano['ano'] = pd.to_datetime(df_ano['datadeapresentacao'], errors='coerce').dt.year
+                df_ano_contagem = df_ano.groupby('ano').size().reset_index(name='quantidade')
+                fig = px.line(df_ano_contagem, x="ano", y="quantidade", title="Projetos por ano", markers=True)
+                st.plotly_chart(fig, width='stretch')
+                st.markdown("---")
+            
+            if 'partido' in df_visao.columns:
+                # Gráfico: Treemap
+                df_partido_tree = df_visao[df_visao['partido'].notnull() & (df_visao['partido'] != '')]
+                df_partido_tree_contagem = df_partido_tree.groupby('partido').size().reset_index(name='quantidade').sort_values(by='quantidade', ascending=False)
+                fig = px.treemap(df_partido_tree_contagem, path=[px.Constant("Todos os Partidos"), "partido"], values="quantidade", color="quantidade", color_continuous_scale="Ice", title="Distribuição de Projetos por Partido")
+                fig.update_traces(textinfo="label+value")
+                st.plotly_chart(fig, width='stretch')
+                st.markdown("---")
 
-            st.markdown("---")
-            # -------------------------------
-            # Gráfico: Distribuição de Projetos por Partido
-            # -------------------------------
-            query = f"""
-            SELECT partido, COUNT(*) AS quantidade
-            FROM Projetos
-            {build_where_clause()}
-            AND partido IS NOT NULL AND partido <> ''
-            GROUP BY partido
-            ORDER BY quantidade DESC;
-            """
-            df = load_data(query)
-            fig = px.treemap(
-                df,
-                path=[px.Constant("Todos os Partidos"), "partido"],  # Define a hierarquia
-                values="quantidade",
-                color="quantidade",
-                color_continuous_scale="Ice",
-                title="Distribuição de Projetos por Partido"
-            )
-            # Ajustes estéticos para exibir os rótulos corretamente
-            fig.update_traces(textinfo="label+value")
-            fig.update_layout(height=600, margin=dict(t=50, l=10, r=10, b=10))
+                col_graf1, col_graf2 = st.columns(2)
+                with col_graf1:
+                    df_top_partidos = df_partido_tree_contagem.head(10)
+                    fig1 = px.bar(df_top_partidos, x="partido", y="quantidade", title="Top 10 Partidos")
+                    st.plotly_chart(fig1, width='stretch')
 
-            st.plotly_chart(fig, use_container_width=True)
+                with col_graf2:
+                    if 'situacao' in df_visao.columns:
+                        df_sit_contagem = df_visao.groupby('situacao').size().reset_index(name='quantidade').sort_values(by="quantidade", ascending=True)
+                        fig2 = px.bar(df_sit_contagem, x="quantidade", y="situacao", orientation="h", title="Projetos por Situação", text="quantidade")
+                        fig2.update_traces(textposition='outside')
+                        fig2.update_xaxes(visible=False)
+                        fig2.update_yaxes(title="")
+                        st.plotly_chart(fig2, width='stretch')
 
-            st.markdown("---")
-
-            col_graf1, col_graf2 = st.columns(2)
-
-            with col_graf1:
-                # -------------------------------
-                # Gráfico: Top 10 Partidos com Mais Projetos
-                # -------------------------------
-                df_partido = df_visao.groupby('partido', as_index=False)['quantidade'].sum().reset_index()
-                df_partido = df_partido.sort_values(by='quantidade', ascending=False).head(10)
-                fig1 = px.bar(
-                    df_partido,
-                    x="partido",
-                    y="quantidade",
-                    title="Top 10 Partidos com Mais Projetos",
-                    labels={"partido": "Partido", "quantidade": "Projetos"}
-                )
-                st.plotly_chart(fig1, use_container_width=True)
-
-            with col_graf2:
-                # -------------------------------
-                # Gráfico: Distribuição por Situação Atual
-                # -------------------------------
-                # 1. Agrupa por situacao e soma a coluna quantidade
-                df_sit = df_visao.groupby('situacao')['quantidade'].sum().reset_index()
-                # 2. Agora ordena (fora do agrupamento para não dar erro de argumento)
-                df_sit = df_sit.sort_values(by="quantidade", ascending=True)
-
-                fig2 = px.bar(
-                    df_sit,
-                    x="quantidade",
-                    y="situacao",
-                    orientation="h",
-                    text="quantidade",  # Mostra o número exato na ponta da barra
-                    title="Projetos por Situação Atual",
-                    # Mesma lógica de cor: Degradê do Laranja para o Azul
-                    color="quantidade",
-                    color_continuous_scale=["#118AB2", "#FF9F1C"]
-                )
-
-                fig2.update_layout(
-                    template="plotly_dark",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    margin=dict(l=10, r=50, t=50, b=10),  # Margem lateral para o texto da esquerda não cortar
-                    height=400,
-                    showlegend=False
-                )
-
-                fig2.update_traces(
-                    textposition='outside',  # Valor numérico fora da barra
-                    marker=dict(line=dict(width=1, color="#073B4C")),
-                    cliponaxis=False  # Garante que o número na ponta da barra não seja cortado
-                )
-
-                # Remove as grades do fundo para um look mais limpo
-                fig2.update_xaxes(showgrid=False, visible=False)
-                fig2.update_yaxes(showgrid=False, title="")
-
-                st.plotly_chart(fig2, use_container_width=True)
         st.markdown("---")
-
-        # -------------------------------
-        # Gráficos: Distribuição de Projetos por Espectro Político
-        # -------------------------------
         st.markdown("**Distribuição de Projetos por Espectro Político**")
-        st.caption("Fonte da Classificação Partidária: Jornal Valor Econômico")
-        tab_esp_tree, tab_esp_bar = st.tabs([
-            "Mapa de Árvore", 
-            "Gráfico de Barra", 
-        ])
-
-        mapa_espectro = {
-            "AGIR": "Centro-Direita",
+        
+        mapa_espectro = {"AGIR": "Centro-Direita",
             "AVANTE": "Centro",
             "CIDADANIA": "Centro-Esquerda",
             "DC": "Visão Independente",
@@ -388,150 +303,169 @@ def rodar_dashboard():
             "Centro-Direita": "#B6C3F2",
             "Direita": "#8FA8E8",
             "Extrema-Direita": "#6F88C9",
-            "Visão Independente": "#A0A0A0" 
+            "Visão Independente": "#A0A0A0"
         }
 
-        query = f"""
-        SELECT partido, COUNT(*) AS quantidade
-        FROM Projetos
-        {build_where_clause()}
-        AND partido IS NOT NULL AND partido <> ''
-        GROUP BY partido
-        ORDER BY quantidade DESC;
-        """
-        df = load_data(query)
-        df['espectro']= df['partido'].map(mapa_espectro).fillna("Não Atribuído")
-        
-        with tab_esp_tree:
-            fig = px.treemap(
-                df,
-                path=[px.Constant("Todos os Espectros"),"espectro", "partido"],
-                values="quantidade",
-                color="espectro",
-                color_discrete_map=cores
-            )
-            fig.update_traces(
-                textinfo="label+value",
-                textfont=dict(color="black")
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        
-        df_agg = df.groupby("espectro")["quantidade"].sum().reset_index()
-        df_agg = df_agg.sort_values("quantidade", ascending=False)
-        
-        with tab_esp_bar:
-            fig = px.bar(
-                df_agg,
-                x="espectro",
-                y="quantidade",
-                labels={"espectro": "Espectro Político", "quantidade": "Projetos"},
-                color="espectro",
-                color_discrete_map=cores
-            )
-            st.plotly_chart(fig, use_container_width=True)
+        if not df_visao.empty and 'partido' in df_visao.columns:
+            df_esp = df_visao[df_visao['partido'].notnull() & (df_visao['partido'] != '')].groupby('partido').size().reset_index(name='quantidade')
+            df_esp['espectro'] = df_esp['partido'].map(mapa_espectro).fillna("Não Atribuído")
+            
+            tab_esp_tree, tab_esp_bar = st.tabs(["Mapa de Árvore", "Gráfico de Barra"])
+            with tab_esp_tree:
+                fig = px.treemap(df_esp, path=[px.Constant("Todos os Espectros"),"espectro", "partido"], values="quantidade", color="espectro", color_discrete_map=cores)
+                st.plotly_chart(fig, width='stretch')
+            with tab_esp_bar:
+                df_agg = df_esp.groupby("espectro")["quantidade"].sum().reset_index().sort_values("quantidade", ascending=False)
+                fig = px.bar(df_agg, x="espectro", y="quantidade", color="espectro", color_discrete_map=cores)
+                st.plotly_chart(fig, width='stretch')
 
     # --- ABA 2: PROPOSIÇÕES ---
     with tab_proposicoes:
         st.subheader("Detalhamento dos Projetos")
-
-        if ordenacao == "Relevância de Score":
-            ordem_sql = "ORDER BY score_relevancia DESC"
-        else:
-            if tipo_data == "Data de Apresentação":
-                ordem_sql = "ORDER BY datadeapresentacao DESC, score_relevancia DESC"
-            else:
-                ordem_sql = "ORDER BY dataultimo DESC, score_relevancia DESC"
-
-        # UNIÃO DO FILTRO DE PESQUISA COM A ORDEM ESCOLHIDA
-        query_props = f"""
-        SELECT
-            score_relevancia as "Relevância (Score)",
-            norma as "Norma",
-            autor as "Autor",
-            partido as "Partido",
-            situacao as "Situação",
-            datadeapresentacao as "Data Apresentação",  
-            dataultimo as "Última Movimentação",        
-            ultimoestado as "Descrição do Andamento",   
-            ementa as "Ementa",
-            linkweb as "Link",
-            linkpdf as "Documento PDF"
-        FROM Projetos
-        {build_where_clause()}
-        {ordem_sql}
-        """
         
-        df_props = load_data(query_props)
+        df_props_filtrado = filtrar_dataframe_via_pandas()
 
-        if df_props.empty:
+        if df_props_filtrado.empty:
             st.warning("Nenhuma proposição encontrada com esses filtros.")
         else:
-            st.dataframe(
-                df_props,
+            if ordenacao == "Relevância de Score" and 'scorefinal' in df_props_filtrado.columns:
+                df_props_filtrado = df_props_filtrado.sort_values(by='scorefinal', ascending=False)
+            elif tipo_data == "Data de Apresentação" and 'datadeapresentacao' in df_props_filtrado.columns:
+                df_props_filtrado = df_props_filtrado.sort_values(by=['datadeapresentacao'], ascending=[False])
+            elif 'dataultimoestado' in df_props_filtrado.columns:
+                df_props_filtrado = df_props_filtrado.sort_values(by=['dataultimoestado'], ascending=[False])
+
+            renomear = {
+                "idproposicao": "ID", 
+                "scorefinal": "Relevância (Score)", 
+                "norma": "Norma", 
+                "autor": "Autor",
+                "partido": "Partido", 
+                "ementa": "Ementa",
+                "situacao": "Situação", 
+                "datadeapresentacao": "Data Apresentação",
+                "dataultimoestado": "Última Movimentação", 
+                "ultimoestado": "Descrição do Andamento",
+                "linkpaginaweb": "Link", 
+                "linkdocumentopdf": "Documento PDF"
+            }
+            df_exibicao = df_props_filtrado.rename(columns=renomear)
+            colunas_mostrar = [c for c in renomear.values() if c in df_exibicao.columns]
+            df_exibicao = df_exibicao[colunas_mostrar]
+
+            @st.dialog("Histórico de Tramitação", width="large")
+            def mostrar_modal_tramitacao_aba2(linha):
+                st.markdown(f"### 📑 {linha.get('Norma', '')}")
+                st.markdown(f"### **Autor:** {linha.get('Autor', '')} - {linha.get('Partido', '')}")
+                st.caption(f"**Ementa:** {linha.get('Ementa', '')}")
+                st.markdown("---")
+                st.markdown("#### 📍 Situação Atual")
+                st.info(f"**{linha.get('Situação', '')}** — {linha.get('Descrição do Andamento', '')}")
+                st.markdown("---")
+                st.markdown("#### 🔗 Documentos e Links Oficiais")
+                c1, c2 = st.columns(2)
+                id_prop = str(linha.get('ID', '')).replace('.0', '').strip()
+                
+                if id_prop and id_prop.lower() not in ['nan', 'none', '']:
+                    link_web = f"https://www.camara.leg.br/proposicoesWeb/fichadetramitacao?idProposicao={id_prop}"
+                else:
+                    link_web = str(linha.get('Link', '#')).strip()
+                    if link_web != '#' and not link_web.startswith('http'):
+                        link_web = 'https://' + link_web
+
+                link_pdf = str(linha.get('Documento PDF', '')).strip()
+                if link_pdf.lower() in ['nan', 'none', '', '#']:
+                    link_pdf = "https://www.camara.leg.br"
+                elif not link_pdf.startswith('http'):
+                    link_pdf = 'https://' + link_pdf
+
+                with c1: st.link_button("🌐 Página do Projeto", link_web, width='stretch')
+                with c2: st.link_button("📄 Íntegra (PDF)", link_pdf, width='stretch')
+                st.markdown("---")
+                
+                st.markdown("#### 🕒 Histórico de Movimentações")
+                df_tram = buscar_tramitacoes_banco(str(linha['Norma']).strip())
+                
+                if not df_tram.empty:
+                    for i, row in df_tram.iterrows():
+                        data_t = row.get('data_tramitacao')
+                        if pd.notnull(data_t):
+                            data_formatada = pd.to_datetime(data_t).strftime('%d/%m/%Y')
+                        else:
+                            data_formatada = "Data não informada"
+                            
+                        orgao_t = row.get('orgao', 'Órgão não especificado')
+                        desc_t = row.get('descricao_tramitacao', 'Sem descrição')
+                        
+                        sit_t = row.get('situacao_tramitacao', '')
+                        aprec_t = row.get('apreciacao', '')
+                        desp_t = row.get('despacho', '')
+                        
+                        texto_principal = str(desc_t)
+                        if pd.notnull(sit_t) and str(sit_t).strip() and str(sit_t).lower() not in ['nan', 'none', '']:
+                            texto_principal += f" — {sit_t}"
+                            
+                        st.markdown(f"**🟢 {data_formatada} - {orgao_t}**\n└ *{texto_principal}*")
+                        
+                        if pd.notnull(aprec_t) and str(aprec_t).strip() and str(aprec_t).lower() not in ['nan', 'none', '']:
+                            st.markdown(f"<div style='padding-left: 20px; font-size: 0.9em;'><b>Apreciação:</b> {aprec_t}</div>", unsafe_allow_html=True)
+                            
+                        if pd.notnull(desp_t) and str(desp_t).strip() and str(desp_t).lower() not in ['nan', 'none', '']:
+                            st.markdown(f"<div style='padding-left: 20px; font-size: 0.9em;'><b>Despacho:</b> {desp_t}</div>", unsafe_allow_html=True)
+                        
+                        if i < len(df_tram) - 1:
+                            st.markdown("<div style='padding-left: 20px; border-left: 2px dashed #118AB2; margin: 5px 0; height: 20px;'></div>", unsafe_allow_html=True)
+                else:
+                    st.warning("⚠️ Histórico detalhado não sincronizado na base. Exibindo resumo rápido do CSV:")
+                    st.markdown(f"**🟢 {linha.get('Última Movimentação', 'Data não informada')}**\n└ *{linha.get('Descrição do Andamento', 'Sem descrição de andamento')}*")
+                    st.markdown("<div style='padding-left: 20px; border-left: 2px dashed #118AB2; margin: 10px 0;'>Tramitação em andamento...</div>", unsafe_allow_html=True)
+                    st.markdown(f"**⚪ {linha.get('Data Apresentação', 'Data não informada')}**\n└ *Proposição apresentada na Câmara dos Deputados.*")
+
+            evento = st.dataframe(
+                df_exibicao,
                 column_config={
-                    "Link": st.column_config.LinkColumn("Link da Câmara"),
-                    "Documento PDF": st.column_config.LinkColumn("📄 Inteiro teor")
+                    "ID": None,
+                    "Link": st.column_config.LinkColumn(), 
+                    "Documento PDF": st.column_config.LinkColumn()
                 },
-                use_container_width=True,
-                hide_index=True
+                width='stretch', hide_index=True, on_select="rerun", selection_mode="single-row"
             )
 
-    # --- ABA 3: BUSCA GLOBAL (BASE COMPLETA) ---
+            if evento and evento["selection"]["rows"]:
+                idx = evento["selection"]["rows"][0]
+                mostrar_modal_tramitacao_aba2(df_exibicao.iloc[idx])
+
+    # --- ABA 3: BUSCA GLOBAL ---
     with tab_busca_global:
         st.subheader("🌐 Busca na Base Completa da Câmara")
-        st.markdown("Pesquise em **todos** os projetos coletados.")
-        
-        busca_livre = st.text_input("🔍 Digite o número da norma (Ex: PL 2338/2023) ou uma palavra-chave para buscar na base inteira:", help="Pesquisa direta em todos os projetos coletados da Câmara, inclusive os que não passaram pelo filtro da IA.")
+        busca_livre = st.text_input("🔍 Digite o número da norma (Ex: PL 2338/2023):")
         
         if busca_livre:
-            with st.spinner("Buscando nos arquivos locais e cruzando com o banco de dados..."):
+            with st.spinner("Buscando..."):
                 df_completo = load_base_completa()
-                
                 if not df_completo.empty:
                     termo = busca_livre.lower()
-                    
-                    # Filtra a base bruta 
-                    mask = (
-                        df_completo['Norma'].str.lower().str.contains(termo, na=False) |
-                        df_completo['Ementa'].str.lower().str.contains(termo, na=False) |
-                        df_completo['Autor'].str.lower().str.contains(termo, na=False)
-                    )
+                    # Filtra a base bruta
+                    mask = (df_completo['Norma'].str.lower().str.contains(termo, na=False) |
+                            df_completo['Ementa'].str.lower().str.contains(termo, na=False) |
+                            df_completo['Autor'].str.lower().str.contains(termo, na=False))
                     df_resultado = df_completo[mask].copy()
                     
-                    # CRUZAMENTO COM O BANCO DE DADOS (SCORE)
                     if not df_resultado.empty:
-                        try:
-                            # Tenta buscar as notas do banco de dados MySQL
-                            df_notas = load_data("SELECT norma, score_relevancia FROM Projetos")
-                            
-                            # Cruza a tabela bruta com a tabela de notas
-                            df_resultado = df_resultado.merge(df_notas, left_on='Norma', right_on='norma', how='left')
-                            
-                            # Define o que escrever na coluna de Score
-                            df_resultado['Score'] = df_resultado['score_relevancia'].apply(
-                                lambda x: f"{float(x):.4f}" if pd.notnull(x) else "Abaixo da nota de corte (< 0.40)"
-                            )
-                            
-                            # Limpa colunas auxiliares do cruzamento
-                            df_resultado = df_resultado.drop(columns=['norma', 'score_relevancia'])
-                            
-                        except Exception as e:
-                            df_resultado['Score'] = "⚠️ Pendente: Rode o main.py"
-                        
-                        colunas_ordenadas = ['Norma', 'Score', 'Data de Apresentação', 'Autor', 'Situação', 'Ementa', 'Link', 'Documento PDF']
-                        colunas_finais = [c for c in colunas_ordenadas if c in df_resultado.columns]
-                        df_resultado = df_resultado[colunas_finais]
+                        if 'norma' in df_csv_completo.columns and 'score_relevancia' in df_csv_completo.columns:
+                            df_notas = df_csv_completo[['norma', 'score_relevancia']].copy()
+                            df_resultado['norma_clean'] = df_resultado['Norma'].str.replace(" ", "").str.lower()
+                            df_notas['norma_clean'] = df_notas['norma'].str.replace(" ", "").str.lower()
+                            df_resultado = df_resultado.merge(df_notas[['norma_clean', 'score_relevancia']], on='norma_clean', how='left')
+                            df_resultado['Score'] = df_resultado['score_relevancia'].apply(lambda x: f"{float(x):.4f}" if pd.notnull(x) else "Abaixo do corte")
+                            df_resultado = df_resultado.drop(columns=['norma_clean', 'score_relevancia'])
+                        else:
+                            df_resultado['Score'] = "Sem score"
 
-                    st.success(f"Foram encontrados **{len(df_resultado)}** projetos na base completa.")
-                    
-                    st.dataframe(
-                        df_resultado,
-                        column_config={"Link": st.column_config.LinkColumn("Link da Câmara"),
-                        "Documento PDF": st.column_config.LinkColumn("📄 Inteiro Teor")},
-                        use_container_width=True,
-                        hide_index=True
-                    )
+                        cols = ['Norma', 'Score', 'Data de Apresentação', 'Autor', 'Situação', 'Ementa', 'Link']
+                        df_resultado = df_resultado[[c for c in cols if c in df_resultado.columns]]
+
+                    st.success(f"Encontrados: {len(df_resultado)}")
+                    st.dataframe(df_resultado, column_config={"Link": st.column_config.LinkColumn()}, width='stretch', hide_index=True)
                 else:
-                    st.error("Nenhum dado bruto encontrado. Verifique se os arquivos JSON foram gerados.")
-        else:
-            st.info("Digite algo na barra de pesquisa acima para carregar os projetos.")
+                    st.error("Nenhum dado bruto encontrado.")
