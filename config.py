@@ -31,7 +31,7 @@ porta = st.secrets["PORTA"]
 
 # 2. CONFIGURAÇÕES GERAIS DA IA E HARDWARE
 
-DATA_INICIO_COLETA = datetime(2025, 1, 1) 
+DATA_INICIO_COLETA = datetime(2015, 1, 1) 
 MODELO_NOME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 # --- NOVO: DETECÇÃO AUTOMÁTICA DE HARDWARE ---
