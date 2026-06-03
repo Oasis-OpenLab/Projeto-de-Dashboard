@@ -88,26 +88,6 @@ def pesquisar():
             print("Erro ao inserir dados. Verifique o arquivo insert_data.py.")
             sys.exit(1)
 
-    def atualizar_tramitacoes():
-        print("\n>>> [4/5] Atualizando cache de tramitações (atualizar_tramitacoes_avulso.py)...")
-        script_path = obter_caminho("atualizar_tramitacoes_avulso.py")
-        try:
-            subprocess.run([sys.executable, script_path], check=True, cwd=BASE_DIR)
-        except subprocess.CalledProcessError:
-            print("Erro ao atualizar tramitações. Verifique o arquivo atualizar_tramitacoes_avulso.py.")
-            sys.exit(1)
-
-    def garantir_estrutura_pastas():
-        print("\n>>> [0/5] Verificando estrutura de pastas...")
-        pastas = [config.PASTA_DADOS, config.PASTA_CSV]
-        
-        for pasta in pastas:
-            if not os.path.exists(pasta):
-                os.makedirs(pasta)
-                print(f"Pasta criada: {pasta}")
-            else:
-                print(f"Pasta pronta: {pasta}")
-
     try:
         print(f"--- INICIANDO PROJETO OASIS COMPLETO ---")
         print(f"Diretório base: {BASE_DIR}")
@@ -118,14 +98,14 @@ def pesquisar():
         # 1. Coleta, Vetoriza e Filtra (Pipeline Híbrido)
         executar_api()
             
-        # 2. Reseta as Tabelas do Banco (Desativado pois já fazemos no insert_data)
-        # recriar_banco()
+        # 2. Reseta as Tabelas do Banco 
+        recriar_banco()
             
         # 3. Insere o CSV Limpo no Banco
         inserir_dados()
 
         # 4. Busca o histórico de tramitações no JSON e insere no Banco
-        atualizar_tramitacoes()
+        # atualizar_tramitacoes()
             
     except Exception as e:
         print(f"Ocorreu um erro fatal na execução principal: {e}")

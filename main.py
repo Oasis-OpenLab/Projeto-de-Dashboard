@@ -59,7 +59,7 @@ with tab_bd:
     st.subheader(":red[AVISO: Atualização da base de dados com projetos recentes.]")
     st.info("Duração estimada: ~20 minutos. Mantenha esta aba aberta para acompanhar o progresso.")
     
-    # Botão que desabilita a si mesmo enquanto roda
+    # --- BOTÃO 1: ATUALIZAÇÃO COMPLETA (PROJETOS + TRAMITAÇÕES) ---
     if st.button("Iniciar Atualização", type="primary", disabled=st.session_state.atualizando_db):
         st.session_state.atualizando_db = True
         
@@ -70,7 +70,6 @@ with tab_bd:
         try:
             # --- ETAPA 1: COLETA (API -> JSON) ---
             with st.spinner("📡 Conectando à API da Câmara... Buscando novas proposições."):
-                # Nota: Como o coletor usa prints, eles aparecerão apenas no console do Streamlit Cloud.
                 coletor_camara2.executar_coleta_incremental()
             
             # --- ETAPA 2: VETORIZAÇÃO (JSON -> PKL) ---
@@ -84,7 +83,6 @@ with tab_bd:
                 st.error(f"Nenhum arquivo JSON encontrado em {config.PASTA_DADOS}")
             else:
                 for arquivo in arquivos_json:
-                    # A função agora tem acesso à pbar e status_info para atualizar a UI
                     gerar_embeddings_para_legislatura(
                         model, 
                         arquivo, 
@@ -99,7 +97,36 @@ with tab_bd:
             st.error(f"❌ Erro crítico durante a atualização: {e}")
         
         finally:
-            # Libera o estado e limpa a barra
             st.session_state.atualizando_db = False
-            time.sleep(3) # Pausa curta para o usuário ler a mensagem de sucesso
+            time.sleep(3) 
+            st.rerun()
+
+    # =====================================================================
+    # --- INÍCIO DAS ALTERAÇÕES: NOVO BOTÃO DE ATUALIZAÇÃO RÁPIDA ---
+    # =====================================================================
+    st.markdown("---")
+    st.subheader("⚡ Atualização Rápida")
+    st.info("Use esta opção para atualizar apenas o histórico de andamentos dos projetos já salvos, sem buscar projetos novos. É muito mais rápido.")
+    
+    # --- BOTÃO 2: APENAS TRAMITAÇÕES ---
+    if st.button("Atualizar APENAS Tramitações", type="secondary", disabled=st.session_state.atualizando_db):
+        st.session_state.atualizando_db = True
+        status_info = st.empty()
+        
+        try:
+            with st.spinner("🔄 Conectando à API da Câmara para baixar andamentos recentes..."):
+                status_info.info("Baixando e compactando históricos (GZIP)... Pode levar alguns minutos.")
+                
+                # Chama DIRETO a função que atualiza só o arquivo GZIP
+                coletor_camara2.atualizar_historico_tramitacoes()
+                
+            st.success("✅ Histórico de tramitações atualizado com sucesso!")
+            st.balloons()
+            
+        except Exception as e:
+            st.error(f"❌ Erro crítico ao atualizar o histórico: {e}")
+            
+        finally:
+            st.session_state.atualizando_db = False
+            time.sleep(3) 
             st.rerun()

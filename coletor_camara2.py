@@ -9,6 +9,9 @@ import concurrent.futures
 import config
 from utils_legislativo import obter_legislatura
 
+import gzip
+
+
 CAMARA_BASE_URL = "https://dadosabertos.camara.leg.br/api/v2"
 TIPOS_DOCUMENTO = ["PL", "PLP", "PEC"]
 
@@ -182,17 +185,17 @@ def atualizar_historico_tramitacoes():
         print("⚠️ Nenhum projeto localizado nos arquivos JSON locais.")
         return
 
-    arquivo_historico_json = os.path.join(config.PASTA_DADOS, "camara_tramitacoes_cache.json")
+    arquivo_historico_json = os.path.join(config.PASTA_DADOS, "camara_tramitacoes_cache.json.gz")
     
     cache_historico_completo = {}
     if os.path.exists(arquivo_historico_json):
-        with open(arquivo_historico_json, 'r', encoding='utf-8') as f:
+        with gzip.open(arquivo_historico_json, 'rt', encoding='utf-8') as f:
             try:
                 cache_historico_completo = json.load(f)
             except:
                 cache_historico_completo = {}
 
-    print(f"🚀 Iniciando download PARALELO (Multithreading) de {total_projetos} históricos para o arquivo JSON...")
+    print(f"🚀 Iniciando download PARALELO (Multithreading) de {total_projetos} históricos para o arquivo JSON GZIP...")
 
     def baixar_historico_json(id_camara, norma):
         url = f"https://dadosabertos.camara.leg.br/api/v2/proposicoes/{id_camara}/tramitacoes"
@@ -232,7 +235,7 @@ def atualizar_historico_tramitacoes():
             if processados % 50 == 0 or processados == total_projetos:
                 print(f"📶 Progresso Global: [{processados}/{total_projetos}] históricos em cache...", flush=True)
 
-    with open(arquivo_historico_json, 'w', encoding='utf-8') as f:
+    with gzip.open(arquivo_historico_json, 'wt', encoding='utf-8') as f:
         json.dump(cache_historico_completo, f, indent=4, ensure_ascii=False)
 
     print("✅ Base de dados de históricos completamente populada e congelada em JSON!")

@@ -19,24 +19,6 @@ def atualizar_banco_sql():
     cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
     cursor.execute("TRUNCATE TABLE Projetos;")
     
-    # 1. FORÇA a exclusão da tabela antiga para atualizar o formato das colunas!
-    cursor.execute("DROP TABLE IF EXISTS Tramitacoes;")
-    
-    # 2. Recria a tabela com as colunas novas
-    sql_criar_tabela_tramitacoes = """
-    CREATE TABLE Tramitacoes (
-        id_tramitacao INT AUTO_INCREMENT PRIMARY KEY,
-        norma VARCHAR(255),
-        data_tramitacao DATE,
-        sequencia INT,
-        orgao VARCHAR(100),
-        descricao_tramitacao TEXT,
-        situacao_tramitacao VARCHAR(255),
-        apreciacao VARCHAR(255),
-        despacho TEXT
-    );
-    """
-    cursor.execute(sql_criar_tabela_tramitacoes)
     cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
     cnx.commit()
 
