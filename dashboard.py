@@ -213,9 +213,23 @@ def rodar_dashboard():
                 # Gráfico: Treemap
                 df_partido_tree = df_visao[df_visao['partido'].notnull() & (df_visao['partido'] != '')]
                 df_partido_tree_contagem = df_partido_tree.groupby('partido').size().reset_index(name='quantidade').sort_values(by='quantidade', ascending=False)
-                fig = px.treemap(df_partido_tree_contagem, path=[px.Constant("Todos os Partidos"), "partido"], values="quantidade", color="quantidade", color_continuous_scale="Ice", title="Distribuição de Projetos por Partido")
-                fig.update_traces(textinfo="label+value")
-                st.plotly_chart(fig, width='stretch')
+
+                tab_part_tree, tab_part_bar = st.tabs(["Mapa de Árvore", "Gráfico de Barra"])
+
+                with tab_part_tree:
+                    fig = px.treemap(df_partido_tree_contagem, path=[px.Constant("Todos os Partidos"), "partido"], values="quantidade", color="quantidade", color_continuous_scale="Ice", title="Distribuição de Projetos por Partido")
+                    fig.update_traces(textinfo="label+value")
+                    st.plotly_chart(fig, width='stretch')
+
+                with tab_part_bar:
+                    fig = px.bar(df_partido_tree_contagem, y="partido", x="quantidade", orientation="h",
+                                 title="Distribuição de Projetos por Partido", color="quantidade",
+                                 color_continuous_scale="Ice", text="quantidade")
+                    fig.update_traces(textposition='outside')
+                    fig.update_xaxes(visible=False)
+                    fig.update_yaxes(title="")
+                    st.plotly_chart(fig, width='stretch')
+
                 st.markdown("---")
 
                 col_graf1, col_graf2 = st.columns(2)
