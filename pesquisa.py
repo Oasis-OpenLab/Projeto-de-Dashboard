@@ -123,9 +123,6 @@ def pesquisar():
             
         # 3. Insere o CSV Limpo no Banco
         inserir_dados()
-
-        # 4. Busca o histórico de tramitações no JSON e insere no Banco
-        atualizar_tramitacoes()
             
     except Exception as e:
         print(f"Ocorreu um erro fatal na execução principal: {e}")
