@@ -15,6 +15,8 @@ from sentence_transformers import SentenceTransformer
 import filtrador_hibrido_v3_final as motor_ia
 import insert_data as motor_banco
 
+import gzip
+
 def rodar_dashboard():
     # ==============================================
     # 2) CONEXÃO E FUNÇÕES AUXILIARES (PANDAS ONLY)
@@ -76,42 +78,21 @@ def rodar_dashboard():
     
     #@st.cache_data(ttl=300) # Cache de 5 minutos para não travar o banco
     def buscar_tramitacoes_banco(norma):
-        # Limpa espaços em branco e garante letras maiúsculas para o "match" perfeito
         norma_limpa = str(norma).upper().strip()
         df = pd.DataFrame()
         
-        # TENTATIVA 1: Busca no Banco de Dados MySQL
+        # Lê o histórico direto do JSON (INFALÍVEL E RÁPIDO)
         try:
-            conn = mysql.connector.connect(
-                host=config.HOST,
-                user=config.USUARIO,
-                password=config.SENHA,
-                database=config.NOME,
-                port=config.porta,
-                ssl_ca=config.certificado
-            )
-            # Usa TRIM e UPPER no SQL para ignorar qualquer diferença de digitação
-            query = "SELECT data_tramitacao, orgao, descricao_tramitacao, sequencia, situacao_tramitacao, apreciacao, despacho FROM Tramitacoes WHERE TRIM(UPPER(norma)) = %s ORDER BY sequencia DESC"
-            df = pd.read_sql(query, conn, params=(norma_limpa,))
-            conn.close()
+            caminho_cache = os.path.join(config.PASTA_DADOS, "camara_tramitacoes_cache.json.gz")
+            if os.path.exists(caminho_cache):
+                with gzip.open(caminho_cache, 'rt', encoding='utf-8') as f:
+                    cache_json = json.load(f)
+                if norma_limpa in cache_json:
+                    df = pd.DataFrame(cache_json[norma_limpa])
+                    if not df.empty:
+                        df = df.sort_values(by='sequencia', ascending=False)
         except Exception as e:
-            print(f"Erro ao buscar no banco: {e}")
-
-        # TENTATIVA 2 (INFALÍVEL): Se o banco estiver vazio, lê o histórico direto do JSON!
-        if df.empty:
-            try:
-                caminho_cache = os.path.join(config.PASTA_DADOS, "camara_tramitacoes_cache.json")
-                if os.path.exists(caminho_cache):
-                    with open(caminho_cache, 'r', encoding='utf-8') as f:
-                        cache_json = json.load(f)
-                        # Verifica se a norma existe nas chaves do JSON
-                        if norma_limpa in cache_json:
-                            df = pd.DataFrame(cache_json[norma_limpa])
-                            if not df.empty:
-                                # Ordena da mais recente para a mais antiga
-                                df = df.sort_values(by='sequencia', ascending=False)
-            except Exception as e:
-                print(f"Erro ao ler JSON: {e}")
+            print(f"Erro ao ler JSON GZIP: {e}")
                 
         return df
 
@@ -255,56 +236,8 @@ def rodar_dashboard():
         st.markdown("---")
         st.markdown("**Distribuição de Projetos por Espectro Político**")
         
-        mapa_espectro = {"AGIR": "Centro-Direita",
-            "AVANTE": "Centro",
-            "CIDADANIA": "Centro-Esquerda",
-            "DC": "Visão Independente",
-            "DEM": "Centro-Direita",
-            "MDB": "Centro",
-            "MOBILIZA": "Centro-Direita",
-            "NOVO": "Direita",
-            "PATRI": "Extrema-Direita",
-            "PCB": "Esquerda",
-            "PCdoB": "Esquerda",
-            "PCO": "Extrema-Esquerda",
-            "PDT": "Centro-Esquerda",
-            "PL": "Direita",
-            "PMB": "Centro",
-            "PODE": "Visão Independente",
-            "PP": "Centro-Direita",
-            "PPS": "Centro-Esquerda",
-            "PR": "Direita",
-            "PRB": "Centro-Direita",
-            "PRD": "Centro-Direita",
-            "PROS": "Centro",
-            "PRTB": "Direita",
-            "PSB": "Centro-Esquerda",
-            "PSC": "Direita",
-            "PSD": "Centro",
-            "PSDB": "Centro",
-            "PSL": "Direita",
-            "PSOL": "Esquerda",
-            "PSTU": "Esquerda",
-            "PT": "Esquerda",
-            "PTB": "Direita",
-            "PV": "Centro-Esquerda",
-            "REDE": "Esquerda",
-            "REPUBLICANOS": "Direita",
-            "SOLIDARIEDADE": "Centro",
-            "UNIÃO": "Centro-Direita",
-            "UP": "Esquerda"
-        }
-        cores={
-            "Não Atribuído": "#E0E0E0",
-            "Extrema-Esquerda": "#C97A7A",
-            "Esquerda": "#E89A9A",
-            "Centro-Esquerda": "#F2B6B6",
-            "Centro": "#C8B6C8",
-            "Centro-Direita": "#B6C3F2",
-            "Direita": "#8FA8E8",
-            "Extrema-Direita": "#6F88C9",
-            "Visão Independente": "#A0A0A0"
-        }
+        mapa_espectro = {"AGIR": "Centro-Direita", "AVANTE": "Centro", "CIDADANIA": "Centro-Esquerda", "DC": "Visão Independente", "DEM": "Centro-Direita", "MDB": "Centro", "MOBILIZA": "Centro-Direita", "NOVO": "Direita", "PATRI": "Extrema-Direita", "PCB": "Esquerda", "PCdoB": "Esquerda", "PCO": "Extrema-Esquerda", "PDT": "Centro-Esquerda", "PL": "Direita", "PMB": "Centro", "PODE": "Visão Independente", "PP": "Centro-Direita", "PPS": "Centro-Esquerda", "PR": "Direita", "PRB": "Centro-Direita", "PRD": "Centro-Direita", "PROS": "Centro", "PRTB": "Direita", "PSB": "Centro-Esquerda", "PSC": "Direita", "PSD": "Centro", "PSDB": "Centro", "PSL": "Direita", "PSOL": "Esquerda", "PSTU": "Esquerda", "PT": "Esquerda", "PTB": "Direita", "PV": "Centro-Esquerda", "REDE": "Esquerda", "REPUBLICANOS": "Direita", "SOLIDARIEDADE": "Centro", "UNIÃO": "Centro-Direita", "UP": "Esquerda"}
+        cores={"Não Atribuído": "#E0E0E0", "Extrema-Esquerda": "#C97A7A", "Esquerda": "#E89A9A", "Centro-Esquerda": "#F2B6B6", "Centro": "#C8B6C8", "Centro-Direita": "#B6C3F2", "Direita": "#8FA8E8", "Extrema-Direita": "#6F88C9", "Visão Independente": "#A0A0A0"}
 
         if not df_visao.empty and 'partido' in df_visao.columns:
             df_esp = df_visao[df_visao['partido'].notnull() & (df_visao['partido'] != '')].groupby('partido').size().reset_index(name='quantidade')
@@ -445,7 +378,6 @@ def rodar_dashboard():
                 df_completo = load_base_completa()
                 if not df_completo.empty:
                     termo = busca_livre.lower()
-                    # Filtra a base bruta
                     mask = (df_completo['Norma'].str.lower().str.contains(termo, na=False) |
                             df_completo['Ementa'].str.lower().str.contains(termo, na=False) |
                             df_completo['Autor'].str.lower().str.contains(termo, na=False))
