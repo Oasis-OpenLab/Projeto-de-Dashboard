@@ -106,7 +106,7 @@ def get_or_create_embeddings(dados, sufixo_leg, model):
         with open(arquivo_cache, 'rb') as f:
             embeddings = pickle.load(f)
             # Garante que seja float logo aqui
-            return embeddings.float() if hasattr(embeddings, 'float') else embeddings
+            return embeddings.float().to(config.dispositivo) if hasattr(embeddings, 'float') else embeddings.to(config.dispositivo)
 
     # 2. Se não existe, gera, salva e DEPOIS retorna o tensor
     # (Note que aqui chamamos a função de geração)
@@ -115,7 +115,7 @@ def get_or_create_embeddings(dados, sufixo_leg, model):
     # Após gerar, precisamos ler o que foi salvo para retornar o objeto
     with open(arquivo_cache, 'rb') as f:
         embeddings = pickle.load(f)
-        return embeddings.float()
+        return embeddings.float().to(config.dispositivo)
 
 # ==========================================================
 # 3. Lógica Main (Execução via Terminal)
