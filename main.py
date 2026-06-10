@@ -39,16 +39,24 @@ with tab_pesquisa:
 
     if st.button("Filtrar", type="primary", disabled=st.session_state.atualizando_db):
         with st.spinner("Vetorizando pesquisa..."):
-            # Lógica de escrita de arquivos preservada
             os.makedirs('banco_de_dados_local', exist_ok=True)
             with open('banco_de_dados_local/pesquisa1.txt', 'w', encoding='utf-8') as f:
                 f.write(tema_pesquisa_principal)
             with open('banco_de_dados_local/pesquisa2.txt', 'w', encoding='utf-8') as f:
                 f.write(tema_pesquisa_secundaria)
 
-            st.cache_data.clear()
+            # Limpa o cache para esquecer o CSV antigo
+            st.cache_data.clear() 
+            
+            # Roda todo o pipeline pesado (via subprocess)
             pesquisa.pesquisar()
+            
+            # Marca como concluído
             st.session_state.ia_concluida = True
+            
+        # O SEGREDO ESTÁ AQUI: Força a página a recarregar imediatamente
+        # Isso garante que o dashboard.py leia o arquivo recém-criado!
+        st.rerun()
         
     st.markdown("---")
 
