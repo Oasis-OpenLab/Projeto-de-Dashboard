@@ -54,9 +54,9 @@ ATUALIZAR_BASE_API = False
 
 # 3. PESOS E NOTAS DE CORTE DO FILTRO HÍBRIDO
 PESO_SEMANTICO = 0.8
-PESO_QUERY_PRINCIPAL = 0.7  # Peso da primeira query, a mais geral
-PESO_QUERY_SECUNDARIA = 0.3  # Peso da segunda query, mais refinada
+PESO_QUERY_PRINCIPAL = 0.65  # Peso da primeira query, a mais geral
+PESO_QUERY_SECUNDARIA = 0.35  # Peso da segunda query, mais refinada
 PESO_KEYWORD = 0.2   
-FILTRO_THRESHOLD = 0.40
+FILTRO_THRESHOLD = 0.50
 THRESHOLD_SEMANTICO_MINIMO = 0.30
 THRESHOLD_SEMANTICO_MINIMO_SECUNDARIA = 0.30

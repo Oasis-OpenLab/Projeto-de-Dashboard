@@ -10,11 +10,6 @@ import glob
 import json
 import os
 
-# --- NOVOS IMPORTS PARA O MOTOR FUNCIONAR NO PAINEL ---
-from sentence_transformers import SentenceTransformer
-import filtrador_hibrido_v3_final as motor_ia
-import insert_data as motor_banco
-
 import gzip
 
 def rodar_dashboard():
@@ -95,23 +90,6 @@ def rodar_dashboard():
             print(f"Erro ao ler JSON GZIP: {e}")
                 
         return df
-
-    # ==============================================
-    # 3) INICIALIZAÇÃO DO MOTOR DE BUSCA
-    # ==============================================
-    @st.cache_resource
-    def carregar_modelo_ia():
-        return SentenceTransformer(config.MODELO_NOME, device=config.dispositivo)
-
-    modelo_nlp = carregar_modelo_ia()
-
-    with open('banco_de_dados_local/pesquisa1.txt', 'r', encoding='utf-8') as arquivo:
-        tema_pesquisa_principal = arquivo.readline()
-    with open('banco_de_dados_local/pesquisa2.txt', 'r', encoding='utf-8') as arquivo:
-        tema_pesquisa_secundaria = arquivo.readline()
-
-    motor_ia.executar_filtragem(tema_pesquisa_principal, tema_pesquisa_secundaria, modelo_nlp)
-    motor_banco.atualizar_banco_sql()
             
     # ==============================================
     # 5) SIDEBAR — FILTROS DO PAINEL

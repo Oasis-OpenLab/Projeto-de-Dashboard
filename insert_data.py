@@ -67,3 +67,10 @@ def atualizar_banco_sql():
     cursor.close()
     cnx.close()
     print("Dados atualizados no banco MySQL com sucesso!")
+
+# ==========================================================
+# BLOCO DE EXECUÇÃO DIRETA (Garante o funcionamento em background)
+# ==========================================================
+if __name__ == "__main__":
+    # Força a execução da inserção no banco de dados quando chamado pelo subprocess
+    atualizar_banco_sql()

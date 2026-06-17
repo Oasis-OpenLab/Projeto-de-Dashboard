@@ -46,9 +46,18 @@ with tab_pesquisa:
             with open('banco_de_dados_local/pesquisa2.txt', 'w', encoding='utf-8') as f:
                 f.write(tema_pesquisa_secundaria)
 
-            st.cache_data.clear()
+            # Limpa o cache para esquecer o CSV antigo
+            st.cache_data.clear() 
+            
+            # Roda todo o pipeline pesado (via subprocess)
             pesquisa.pesquisar()
+            
+            # Marca como concluído
             st.session_state.ia_concluida = True
+            
+        # O SEGREDO ESTÁ AQUI: Força a página a recarregar imediatamente
+        # Isso garante que o dashboard.py leia o arquivo recém-criado!
+        st.rerun()
         
     st.markdown("---")
 

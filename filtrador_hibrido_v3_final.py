@@ -41,6 +41,7 @@ def aplicar_reranking(query, resultados_preliminares):
         resultados_refinados = []
         for hit in rerank_response.results:
             # Recuperamos o projeto original pelo índice retornado pela API
+            nota_cohere = hit.relevance_score
             projeto = resultados_preliminares[hit.index]
             
             # Atualizamos o score com a nota de relevância da IA Especialista
@@ -263,4 +264,33 @@ def executar_filtragem(consulta_usuario, consulta_secundaria, model):
     
     print(f"[SUCESSO] Re-ranking concluído. {len(resultados_finais)} projetos refinados salvos.")
     return resultados_finais
+
+# ==========================================================
+# BLOCO DE EXECUÇÃO DIRETA (Garante o funcionamento em background)
+# ==========================================================
+if __name__ == "__main__":
+    # Carrega o modelo de IA apenas se o script for chamado diretamente
+    print("🧠 Inicializando modelo de IA para filtragem semântica...")
+    model = SentenceTransformer(config.MODELO_NOME, device=config.dispositivo)
+    
+    # Recupera os temas salvos temporariamente pelo Streamlit
+    caminho_p1 = 'banco_de_dados_local/pesquisa1.txt'
+    caminho_p2 = 'banco_de_dados_local/pesquisa2.txt'
+    
+    tema_principal = ""
+    tema_secundario = ""
+    
+    if os.path.exists(caminho_p1):
+        with open(caminho_p1, 'r', encoding='utf-8') as arquivo:
+            tema_principal = arquivo.readline().strip()
+            
+    if os.path.exists(caminho_p2):
+        with open(caminho_p2, 'r', encoding='utf-8') as arquivo:
+            tema_secundario = arquivo.readline().strip()
+            
+    if tema_principal:
+        # Executa o motor completo e gera o novo CSV refinado
+        executar_filtragem(tema_principal, tema_secundario, model)
+    else:
+        print("⚠️ Erro: Nenhum tema principal localizado em pesquisa1.txt")
 
