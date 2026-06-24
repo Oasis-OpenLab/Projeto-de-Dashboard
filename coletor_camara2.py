@@ -1,3 +1,13 @@
+"""
+Módulo de Extração de Dados (ETL) da API da Câmara dos Deputados.
+
+Responsável por:
+- Consultar a API de Dados Abertos para buscar projetos de lei (PL, PLP, PEC).
+- Realizar paginação e gerenciar limites de requisição (Rate Limit 429).
+- Executar extração em paralelo (Multithreading) para acelerar o download.
+- Particionar os dados salvos em arquivos JSON por legislatura (Sharding).
+- Sincronizar de forma incremental, baixando apenas projetos novos desde a última execução.
+"""
 import requests
 import json
 import os
@@ -22,12 +32,21 @@ ARQUIVO_CACHE_PARTIDOS = os.path.join(config.PASTA_DADOS, "cache_partidos.json")
 ARQUIVO_METADADOS = os.path.join(config.PASTA_DADOS, "metadata_coleta.json")
 
 MAX_WORKERS = 10 
+
+# Variáveis para segurança no uso de múltiplas threads
 thread_local = threading.local()
 cache_lock = threading.Lock()
 
 def get_session():
     """
-    Retorna uma sessão HTTP específica da thread atual.
+    Garante que cada Thread tenha sua própria sessão HTTP isolada.
+    
+    Reutilizar sessões HTTP (connection pooling) acelera as requisições, 
+    mas requests.Session() não é 'thread-safe' por padrão. Essa função 
+    evita conflitos de conexão entre as threads concorrentes.
+
+    Returns:
+        requests.Session: Sessão HTTP vinculada à thread atual.
     """
     if not hasattr(thread_local, "session"):
         thread_local.session = requests.Session()
@@ -35,7 +54,19 @@ def get_session():
 
 def obter_lista_ids(base_url, data_inicio_global, data_fim_global, tipos):
     """
-    Objetivo: Buscar TODOS os IDs de proposições no intervalo de datas especificado.
+    Varre a API da Câmara para coletar os IDs de todas as proposições em um período.
+
+    Faz a paginação automática saltando de 90 em 90 dias (para não sobrecarregar
+    a API com buscas muito longas de uma vez).
+
+    Args:
+        base_url (str): URL base da API da Câmara.
+        data_inicio_global (datetime): Data de início da busca.
+        data_fim_global (datetime): Data de término da busca.
+        tipos (list): Lista de siglas de projetos (ex: ["PL", "PEC"]).
+
+    Returns:
+        list: Lista contendo os IDs únicos (inteiros) encontrados no período.
     """
     print(f"A procurar IDs (Período: {data_inicio_global.strftime('%d/%m/%Y')} até {data_fim_global.strftime('%d/%m/%Y')})...", flush=True)
     
@@ -61,6 +92,7 @@ def obter_lista_ids(base_url, data_inicio_global, data_fim_global, tipos):
         while url:
             try:
                 r = session.get(url, params=params, timeout=15)
+                # Lida com o erro 429 (Too Many Requests) da API
                 if r.status_code == 429:
                     time.sleep(5)
                     continue
@@ -71,7 +103,7 @@ def obter_lista_ids(base_url, data_inicio_global, data_fim_global, tipos):
 
                 links = dados.get('links', [])
                 url = next((link['href'] for link in links if link['rel'] == 'next'), None)
-                params = None
+                params = None # Limpa params porque a próxima URL já vem completa
             except Exception:
                 break
         data_atual = data_proxima + timedelta(days=1)
@@ -80,11 +112,23 @@ def obter_lista_ids(base_url, data_inicio_global, data_fim_global, tipos):
 
 def processar_uma_proposicao(prop_id, cache_autores):
     """
-    Objetivo: Buscar detalhes completos de uma proposição e enriquecê-la.
+    Busca os metadados detalhados de um único projeto de lei.
+
+    Esta função é chamada concorrentemente pelas Threads. Ela busca a ementa, 
+    autor principal, partido e coautores. Utiliza um cache de partidos em 
+    memória para evitar bater na API de Deputados repetidas vezes.
+
+    Args:
+        prop_id (int): O ID numérico da proposição.
+        cache_autores (dict): Dicionário em memória mapeando URI de deputado para partido.
+
+    Returns:
+        dict ou None: O dicionário com os dados completos do projeto, ou None em caso de falha.
     """
     session = get_session()
     url_detalhe = f"{CAMARA_BASE_URL}/proposicoes/{prop_id}"
 
+    # Tenta até 3 vezes (Retry mechanism) em caso de instabilidade de rede
     for _ in range(3):
         try:
             r = session.get(url_detalhe, timeout=10)
@@ -110,6 +154,7 @@ def processar_uma_proposicao(prop_id, cache_autores):
                         uri_deputado = autor_principal.get('uri')
 
                         if uri_deputado and 'deputados' in uri_deputado:
+                            # Utiliza LOCK para leitura/escrita segura no cache compartilhado entre as threads
                             with cache_lock: tem_no_cache = uri_deputado in cache_autores
                             if tem_no_cache: autor_partido = cache_autores[uri_deputado]
                             else:
@@ -129,7 +174,18 @@ def processar_uma_proposicao(prop_id, cache_autores):
 
 def obter_detalhes_e_separar(lista_ids):
     """
-    FUNÇÃO PRINCIPAL DE EXTRAÇÃO E PARTICIONAMENTO.
+    Orquestrador Multithread para download e separação (Sharding) dos projetos.
+
+    Distribui os IDs encontrados para um Pool de Threads (trabalhadores independentes).
+    Conforme os projetos são baixados, agrupa-os em categorias (legislaturas)
+    para evitar arquivos muito pesados.
+
+    Args:
+        lista_ids (list): Lista com milhares de IDs de projetos.
+
+    Returns:
+        dict: Dicionário onde a chave é a legislatura (ex: 'leg57') e o valor
+              é a lista de dicionários com os projetos completos.
     """
     print(f"\nExtração MULTITHREAD de {len(lista_ids)} projetos...", flush = True)
 
@@ -141,8 +197,10 @@ def obter_detalhes_e_separar(lista_ids):
     total, processados, start_time = len(lista_ids), 0, time.time()
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        # Envia todas as tarefas para a fila das threads
         futuros = {executor.submit(processar_uma_proposicao, pid, cache_autores): pid for pid in lista_ids}
 
+        # Conforme as threads terminam, processa os resultados
         for futuro in concurrent.futures.as_completed(futuros):
             processados += 1
             res = futuro.result()
@@ -160,7 +218,13 @@ def obter_detalhes_e_separar(lista_ids):
     return bancos_separados
 
 def atualizar_historico_tramitacoes():
-    """Baixa o histórico de TODOS os projetos locais em paralelo (Multithreading) para o MySQL/JSON."""
+    """
+    Baixa o histórico de tramitações (andamentos) para TODOS os projetos locais.
+    
+    Varre os arquivos JSON de base gerados na coleta, extrai os IDs e faz uma
+    varredura paralela pesada (15 workers) batendo no endpoint `/tramitacoes`.
+    O resultado é compactado em GZIP (.gz) devido ao alto volume de texto.
+    """
     print("🔄 Iniciando sincronização GLOBAL de históricos em arquivos JSON locais...")
     
     padrao_busca = os.path.join(config.PASTA_DADOS, "camara_db_leg*.json")
@@ -246,6 +310,13 @@ def atualizar_historico_tramitacoes():
 def executar_coleta_incremental():
     """
     Encapsula a lógica de Smart Sync para ser chamada externamente.
+    
+    Função principal exportável (entry point para o Streamlit/main.py).
+
+    Implementa a lógica de 'Smart Sync' (Sincronização Incremental).
+    Lê o arquivo de metadados para descobrir quando foi a última coleta,
+    e busca apenas os projetos criados de lá para cá, fundindo-os com a base atual.
+    Também dispara a sincronização dos andamentos no final.
     """
     if not os.path.exists(config.PASTA_DADOS): os.makedirs(config.PASTA_DADOS)
 

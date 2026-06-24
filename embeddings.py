@@ -1,3 +1,13 @@
+"""
+Módulo de Geração de Embeddings Semânticos para Textos Legislativos.
+
+Responsável por:
+- Carregar o modelo de Linguagem (LLM) Sentence-Transformers localmente.
+- Ler os arquivos JSON contendo as ementas dos projetos.
+- Converter o texto limpo das ementas em vetores matemáticos (Tensores PyTorch).
+- Salvar os vetores em formato binário (.pkl) para uso como cache offline,
+  garantindo buscas em tempo real nas próximas execuções.
+"""
 import os
 import json
 import pickle
@@ -12,7 +22,13 @@ from utils_legislativo import limpar_ementa_para_vetorizacao
 # ==========================================================
 def get_model():
     """
-    Retorna o modelo carregado conforme as configurações do arquivo config.py.
+    Inicializa e retorna o modelo de Inteligência Artificial para embeddings.
+    
+    O modelo específico e a alocação de hardware (CPU, GPU CUDA, ou Apple MPS)
+    são definidos dinamicamente no arquivo config.py.
+
+    Returns:
+        SentenceTransformer: O modelo de LLM carregado na memória.
     """
     return SentenceTransformer(
         config.MODELO_NOME,
@@ -24,8 +40,19 @@ def get_model():
 # ==========================================================
 def gerar_embeddings_para_legislatura(model, arquivo_json, pbar=None, status_text=None):
     """
-    Processa um arquivo JSON e gera o cache de embeddings .pkl.
-    Suporta integração opcional com a UI do Streamlit.
+    Processa as proposições de uma legislatura e gera seu respectivo arquivo de cache (.pkl).
+
+    Realiza o processamento em lotes (batches) para evitar estouro de memória RAM/VRAM
+    e permite a integração com componentes de UI (como barras de progresso no Streamlit).
+
+    Args:
+        model (SentenceTransformer): O modelo de IA carregado.
+        arquivo_json (str): Caminho absoluto para o arquivo JSON contendo os dados brutos.
+        pbar (streamlit.empty, opcional): Objeto de barra de progresso do Streamlit.
+        status_text (streamlit.empty, opcional): Objeto de texto de status do Streamlit.
+
+    Returns:
+        int: O número total de proposições vetorizadas.
     """
     nome_base = os.path.basename(arquivo_json)
     # Extrai o sufixo (ex: leg56) para nomear o cache
@@ -95,8 +122,19 @@ def gerar_embeddings_para_legislatura(model, arquivo_json, pbar=None, status_tex
 # ==========================================================
 def get_or_create_embeddings(dados, sufixo_leg, model):
     """
-    Garante que o retorno seja SEMPRE o tensor de embeddings,
-    seja carregando do cache ou gerando um novo.
+    Gerenciador inteligente de Cache de Embeddings.
+
+    Verifica se os vetores da legislatura solicitada já existem no disco.
+    Se sim, carrega e move para a memória/GPU. Se não, dispara a geração,
+    salva e depois carrega.
+
+    Args:
+        dados (list): Lista de dicionários com os projetos de lei.
+        sufixo_leg (str): Identificador da legislatura (ex: 'leg57').
+        model (SentenceTransformer): O modelo de IA em uso.
+
+    Returns:
+        torch.Tensor: Tensor multidimensional com os vetores de todas as ementas daquele lote.
     """
     arquivo_cache = os.path.join(config.PASTA_DADOS, f"cache_ementas_{sufixo_leg}.pkl")
     caminho_json = os.path.join(config.PASTA_DADOS, f"camara_db_{sufixo_leg}.json")
@@ -122,7 +160,8 @@ def get_or_create_embeddings(dados, sufixo_leg, model):
 # ==========================================================
 def main():
     """
-    Execução padrão quando o script é chamado diretamente (ex: python embeddings.py).
+    Ponto de entrada para execução em modo de terminal (Offline/Batch Mode).
+    Varre a pasta de dados e processa todos os arquivos JSON encontrados.
     """
     print("=== INICIANDO PROCESSAMENTO DE EMBEDDINGS (MODO OFFLINE) ===", flush = True)
     

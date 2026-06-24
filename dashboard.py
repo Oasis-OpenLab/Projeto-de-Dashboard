@@ -1,3 +1,11 @@
+"""
+Módulo de Visualização de Dados e Interface do Dashboard.
+
+Responsável por renderizar a interface gráfica pós-pesquisa usando Streamlit.
+Consome o arquivo CSV gerado pelo motor de IA (pandas) e constrói métricas, 
+gráficos interativos (plotly) e tabelas de detalhamento. Opera inteiramente 
+em memória para garantir fluidez ao aplicar filtros visuais.
+"""
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -13,13 +21,21 @@ import os
 import gzip
 
 def rodar_dashboard():
+    """
+    Função principal que encapsula a renderização de todo o painel visual.
+    Contém a declaração dos componentes da barra lateral (sidebar), as abas 
+    (tabs) de navegação e as funções locais de carregamento de dados com cache.
+    """
     # ==============================================
-    # 2) CONEXÃO E FUNÇÕES AUXILIARES (PANDAS ONLY)
+    # FUNÇÕES AUXILIARES DE INGESTÃO (PANDAS)
     # ==============================================
 
     @st.cache_data
     def load_data():
-        """Lê o arquivo CSV processado localmente."""
+        """
+        Lê o CSV principal e padroniza os nomes das colunas.
+        Usa st.cache_data para evitar recarregar o arquivo do disco a cada clique do usuário.
+        """
         csv_file_path = os.path.join("projetos_em_csv", "proposicoes_camara_resumo.csv")
         if os.path.exists(csv_file_path):
             df = pd.read_csv(csv_file_path, delimiter=";")
@@ -32,7 +48,7 @@ def rodar_dashboard():
 
     @st.cache_data
     def load_distinct_values(coluna):
-        """Busca os valores únicos direto do DataFrame Pandas."""
+        """Busca valores únicos de uma coluna para preencher os SelectBoxes (Filtros)."""
         if not df_csv_completo.empty and coluna in df_csv_completo.columns:
             valores = df_csv_completo[coluna].dropna().unique().tolist()
             return ["Todos"] + sorted(valores)
@@ -40,7 +56,7 @@ def rodar_dashboard():
 
     @st.cache_data
     def load_min_date():
-        """Busca a menor data direto do DataFrame Pandas."""
+        """Busca a data do projeto mais antigo para definir o limite do calendário de filtros."""
         if not df_csv_completo.empty and 'datadeapresentacao' in df_csv_completo.columns:
             min_val = pd.to_datetime(df_csv_completo['datadeapresentacao'], errors='coerce').min()
             if pd.notnull(min_val):
@@ -49,7 +65,11 @@ def rodar_dashboard():
 
     @st.cache_data
     def load_base_completa():
-        """Lê todos os JSONs brutos da Câmara."""
+        """
+        Lê todos os JSONs brutos da Câmara (ignora os vetores de IA).
+        Utilizado exclusivamente pela aba de 'Busca Global' para encontrar qualquer
+        projeto, mesmo os que foram rejeitados no filtro semântico principal.
+        """
         padrao = os.path.join(config.PASTA_DADOS, "camara_db_leg*.json")
         arquivos = glob.glob(padrao)
         dados_completos = []
@@ -73,6 +93,15 @@ def rodar_dashboard():
     
     #@st.cache_data(ttl=300) # Cache de 5 minutos para não travar o banco
     def buscar_tramitacoes_banco(norma):
+        """
+        Lê o histórico de andamentos direto do arquivo GZIP unificado.
+        
+        Args:
+            norma (str): Identificador do projeto (ex: 'PL 1234/2023').
+            
+        Returns:
+            pd.DataFrame: Tabela contendo todo o histórico cronológico de despachos.
+        """
         norma_limpa = str(norma).upper().strip()
         df = pd.DataFrame()
         
@@ -92,7 +121,7 @@ def rodar_dashboard():
         return df
             
     # ==============================================
-    # 5) SIDEBAR — FILTROS DO PAINEL
+    # SIDEBAR — FILTROS DO PAINEL
     # ==============================================
     st.sidebar.header("⚙️ Filtros do Painel")
 
@@ -153,7 +182,7 @@ def rodar_dashboard():
         return df
 
     # ==============================================
-    # 6) ESTRUTURA DE ABAS
+    # 6) ESTRUTURA DE ABAS E RENDERIZAÇÃO
     # ==============================================
     tab_visao, tab_proposicoes, tab_busca_global = st.tabs([
         "📊 Visão Geral", 
@@ -228,8 +257,58 @@ def rodar_dashboard():
         st.markdown("---")
         st.markdown("**Distribuição de Projetos por Espectro Político**")
         
-        mapa_espectro = {"AGIR": "Centro-Direita", "AVANTE": "Centro", "CIDADANIA": "Centro-Esquerda", "DC": "Visão Independente", "DEM": "Centro-Direita", "MDB": "Centro", "MOBILIZA": "Centro-Direita", "NOVO": "Direita", "PATRI": "Extrema-Direita", "PCB": "Esquerda", "PCdoB": "Esquerda", "PCO": "Extrema-Esquerda", "PDT": "Centro-Esquerda", "PL": "Direita", "PMB": "Centro", "PODE": "Visão Independente", "PP": "Centro-Direita", "PPS": "Centro-Esquerda", "PR": "Direita", "PRB": "Centro-Direita", "PRD": "Centro-Direita", "PROS": "Centro", "PRTB": "Direita", "PSB": "Centro-Esquerda", "PSC": "Direita", "PSD": "Centro", "PSDB": "Centro", "PSL": "Direita", "PSOL": "Esquerda", "PSTU": "Esquerda", "PT": "Esquerda", "PTB": "Direita", "PV": "Centro-Esquerda", "REDE": "Esquerda", "REPUBLICANOS": "Direita", "SOLIDARIEDADE": "Centro", "UNIÃO": "Centro-Direita", "UP": "Esquerda"}
-        cores={"Não Atribuído": "#E0E0E0", "Extrema-Esquerda": "#C97A7A", "Esquerda": "#E89A9A", "Centro-Esquerda": "#F2B6B6", "Centro": "#C8B6C8", "Centro-Direita": "#B6C3F2", "Direita": "#8FA8E8", "Extrema-Direita": "#6F88C9", "Visão Independente": "#A0A0A0"}
+        mapa_espectro = {
+            "AGIR": "Centro-Direita",
+            "AVANTE": "Centro",
+            "CIDADANIA": "Centro-Esquerda",
+            "DC": "Visão Independente",
+            "DEM": "Centro-Direita",
+            "MDB": "Centro",
+            "MOBILIZA": "Centro-Direita",
+            "NOVO": "Direita",
+            "PATRI": "Extrema-Direita",
+            "PCB": "Esquerda",
+            "PCdoB": "Esquerda",
+            "PCO": "Extrema-Esquerda",
+            "PDT": "Centro-Esquerda",
+            "PL": "Direita",
+            "PMB": "Centro",
+            "PODE": "Visão Independente",
+            "PP": "Centro-Direita",
+            "PPS": "Centro-Esquerda",
+            "PR": "Direita",
+            "PRB": "Centro-Direita",
+            "PRD": "Centro-Direita",
+            "PROS": "Centro",
+            "PRTB": "Direita",
+            "PSB": "Centro-Esquerda",
+            "PSC": "Direita",
+            "PSD": "Centro",
+            "PSDB": "Centro",
+            "PSL": "Direita",
+            "PSOL": "Esquerda",
+            "PSTU": "Esquerda",
+            "PT": "Esquerda",
+            "PTB": "Direita",
+            "PV": "Centro-Esquerda",
+            "REDE": "Esquerda",
+            "REPUBLICANOS": "Direita",
+            "SOLIDARIEDADE": "Centro",
+            "UNIÃO": "Centro-Direita",
+            "UP": "Esquerda",
+        }
+
+        cores = {
+            "Não Atribuído": "#E0E0E0",
+            "Extrema-Esquerda": "#C97A7A",
+            "Esquerda": "#E89A9A",
+            "Centro-Esquerda": "#F2B6B6",
+            "Centro": "#C8B6C8",
+            "Centro-Direita": "#B6C3F2",
+            "Direita": "#8FA8E8",
+            "Extrema-Direita": "#6F88C9",
+            "Visão Independente": "#A0A0A0",
+        }
 
         if not df_visao.empty and 'partido' in df_visao.columns:
             df_esp = df_visao[df_visao['partido'].notnull() & (df_visao['partido'] != '')].groupby('partido').size().reset_index(name='quantidade')

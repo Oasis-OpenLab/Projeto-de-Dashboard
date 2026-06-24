@@ -1,3 +1,11 @@
+"""
+Módulo de Extração e Vetorização de Palavras-Chave (Keywords).
+
+Responsável por isolar as tags e indexações dos projetos de lei, removendo 
+duplicatas globais por legislatura e gerando seus embeddings. Isso alimenta 
+o motor de busca híbrida, permitindo "boost" de pontuação quando o usuário 
+pesquisa por um termo exato que seja uma palavra-chave oficial do projeto.
+"""
 import json
 import pickle
 import os
@@ -11,17 +19,17 @@ MODELO_NOME = config.MODELO_NOME
 
 def extrair_keywords(dados):
     """
-    Percorre todas as proposições de um JSON
-    e extrai um conjunto único de keywords/indexações.
+    Varre um conjunto de projetos, extrai, limpa e deduplica as palavras-chave.
 
-    Responsabilidade:
-    - limpar
-    - validar
-    - deduplicar
-    - ordenar
+    Lida com variações de nomenclatura nas bases da Câmara (chaves 'keywords' vs 'indexacao')
+    e utiliza um set() matemático para garantir que a IA não vetorize a mesma
+    palavra repetidas vezes, economizando tempo de processamento.
 
-    Retorna:
-        lista ordenada de keywords únicas.
+    Args:
+        dados (list): Lista de dicionários representando os projetos de lei.
+
+    Returns:
+        list: Lista alfabeticamente ordenada contendo apenas tags únicas e válidas.
     """
     # Usamos set para evitar duplicatas automaticamente
     unique_keywords = set()

@@ -1,3 +1,14 @@
+"""
+Ponto de Entrada (Entry Point) do Aplicativo Web OASIS.
+
+Responsável por:
+- Inicializar a interface gráfica do Streamlit.
+- Gerenciar o estado global da aplicação (session_state), travando botões 
+  durante processos pesados para evitar cliques duplos.
+- Capturar as intenções de busca do usuário e gravá-las em arquivos locais.
+- Disparar os pipelines de Inteligência Artificial (aba Pesquisa).
+- Disparar os pipelines de Sincronização de Banco de Dados (aba Atualizar).
+"""
 import streamlit as st
 import pesquisa
 import dashboard
@@ -12,9 +23,13 @@ import coletor_camara2
 st.set_page_config(page_title="Dashboard OASIS", layout="wide")
 st.title("🏛️ Dashboard dos Projetos de Lei - IA OASIS")
 
-# Inicializa estados de controle
+# ==========================================================
+# GERENCIAMENTO DE ESTADO (SESSION STATE)
+# ==========================================================
+# Garante que a IA saiba quando terminou de processar para exibir os gráficos
 if 'ia_concluida' not in st.session_state:
     st.session_state.ia_concluida = False
+# Trava a interface (disable=True) enquanto o banco estiver sendo atualizado
 if 'atualizando_db' not in st.session_state:
     st.session_state.atualizando_db = False
 
@@ -37,15 +52,19 @@ with tab_pesquisa:
     with col2:
         tema_pesquisa_secundaria = st.text_input("Tema secundário (opcional):")
 
+    # ==========================================================
+    # GATILHO DE PESQUISA (BOTÃO FILTRAR)
+    # ==========================================================
     if st.button("Filtrar", type="primary", disabled=st.session_state.atualizando_db):
         with st.spinner("Vetorizando pesquisa..."):
-            # Lógica de escrita de arquivos preservada
+            # Etapa 1: Salva o input do usuário para os scripts de IA lerem
             os.makedirs('banco_de_dados_local', exist_ok=True)
             with open('banco_de_dados_local/pesquisa1.txt', 'w', encoding='utf-8') as f:
                 f.write(tema_pesquisa_principal)
             with open('banco_de_dados_local/pesquisa2.txt', 'w', encoding='utf-8') as f:
                 f.write(tema_pesquisa_secundaria)
 
+            # Etapa 2: Limpa o cache de memória do Streamlit e engatilha o motor
             # Limpa o cache para esquecer o CSV antigo
             st.cache_data.clear() 
             

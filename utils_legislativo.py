@@ -1,3 +1,12 @@
+"""
+Módulo de utilitários para Processamento de Linguagem Natural (NLP) legislativo.
+
+Fornece funções para padronização, limpeza e tratamento de textos jurídicos 
+brutos extraídos da API da Câmara. O objetivo é remover ruídos (como numerações 
+de leis e jargões burocráticos) para otimizar a criação de vetores de alta 
+qualidade pelos modelos de Inteligência Artificial.
+"""
+
 import re
 import unicodedata
 
@@ -28,11 +37,32 @@ BLACKLIST_KEYWORDS = {
 }
 
 def limpar_texto_basico(texto):
+    """
+    Remove acentuação, caracteres especiais invisíveis e converte o texto para minúsculas.
+
+    Args:
+        texto (str): O texto bruto que precisa ser normalizado.
+
+    Returns:
+        str: Texto em minúsculas e sem acentos, ou string vazia se nulo.
+    """
     if not texto: return ""
     texto = texto.lower()
     return ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn')
 
 def limpar_padroes_regex(texto):
+    """
+    Remove menções repetitivas a artigos, incisos, parágrafos e datas específicas.
+    
+    Utiliza expressões regulares para limpar jargões estruturais que não agregam
+    valor semântico ao tema do projeto.
+
+    Args:
+        texto (str): O texto a ser processado com as regex.
+
+    Returns:
+        str: O texto com os padrões legais removidos.
+    """
     texto = re.sub(r'\bde\s+\d{4}\b', ' ', texto) 
     texto = re.sub(r'lei\s+n[ºo°]?\s*[\d\.]+', ' ', texto, flags=re.IGNORECASE)
     texto = re.sub(r'\bart[\.\s]\s*\d+[ºo°]?', ' ', texto, flags=re.IGNORECASE) 
@@ -41,6 +71,18 @@ def limpar_padroes_regex(texto):
     return texto
 
 def limpar_ementa_para_vetorizacao(texto):
+    """
+    Função orquestradora que prepara a ementa de um projeto para a Inteligência Artificial.
+
+    Aplica a limpeza básica, remove padrões de formatação legal (regex) e 
+    filtra as stopwords específicas do contexto legislativo.
+
+    Args:
+        texto (str): Ementa original do projeto de lei.
+
+    Returns:
+        str: Ementa limpa e condensada, contendo apenas palavras com peso semântico.
+    """
     if not texto: return ""
     texto = limpar_texto_basico(texto)
     texto = limpar_padroes_regex(texto)
@@ -49,6 +91,18 @@ def limpar_ementa_para_vetorizacao(texto):
     return " ".join(texto.split())
 
 def validar_tag(tag):
+    """
+    Valida e padroniza as palavras-chave (indexação) vinculadas aos projetos.
+
+    Rejeita tags muito curtas (<= 3 letras) ou que constem na lista de bloqueio
+    (blacklist) por serem genéricas demais.
+
+    Args:
+        tag (str): Palavra-chave ou termo de indexação bruto.
+
+    Returns:
+        str ou None: A tag em formato maiúsculo se válida, ou None se rejeitada.
+    """
     if not tag: return None
     t_limpo = limpar_texto_basico(tag).strip()
     if len(t_limpo) <= 3 or t_limpo in BLACKLIST_KEYWORDS:
@@ -56,7 +110,18 @@ def validar_tag(tag):
     return t_limpo.upper()
 
 def obter_legislatura(ano):
-    """NOVO: Retorna a qual legislatura o ano pertence para fazer o Sharding"""
+    """
+    Classifica um ano na sua respectiva legislatura da Câmara dos Deputados.
+
+    Função utilizada para rotear e particionar dados em blocos (sharding), 
+    evitando que o sistema processe arquivos monolíticos e pesados.
+
+    Args:
+        ano (int ou str): O ano de apresentação do projeto.
+
+    Returns:
+        str: A string representativa da legislatura (ex: 'leg57', 'leg56').
+    """
     try:
         ano = int(ano)
         if ano >= 2023: return "leg57"

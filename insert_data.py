@@ -1,6 +1,10 @@
 """
-File name: insert_data.py
-Brief: Lê o CSV gerado pela IA e atualiza o banco de dados MySQL para o Dashboard ler.
+Módulo de Ingestão de Dados (CSV -> MySQL).
+
+Responsável por ler o arquivo CSV resultante do processo de filtragem 
+híbrida e inserir os registros na tabela 'Projetos' do banco de dados 'Oasis'.
+Também realiza a limpeza prévia da tabela de forma segura antes da inserção,
+garantindo que o Dashboard reflita apenas a última pesquisa do usuário.
 """
 import mysql.connector
 import csv
@@ -9,7 +13,20 @@ import os
 import config
 
 def atualizar_banco_sql():
-    """Conecta no MySQL, limpa a pesquisa anterior e insere os novos projetos filtrados."""
+    """
+    Conecta ao MySQL, trunca (limpa) a tabela atual e insere os novos dados.
+
+    Passo a passo:
+    1. Desativa temporariamente as restrições de chave estrangeira (FOREIGN_KEY_CHECKS)
+       para permitir um TRUNCATE limpo e rápido.
+    2. Lê o arquivo CSV ignorando colunas de log/debug (ex: 'Boost Keyword').
+    3. Formata strings de data para o padrão suportado pelo MySQL (YYYY-MM-DD).
+    4. Executa os comandos INSERT em lote para popular o banco.
+
+    Levanta:
+        mysql.connector.Error: Se houver falhas de credenciais ou no TRUNCATE.
+        FileNotFoundError: Se o arquivo CSV gerado pela IA não for encontrado.
+    """
     # Conecta no Banco
     cnx = mysql.connector.connect(user=config.USUARIO, password=config.SENHA, host=config.HOST, database=config.NOME, port = config.porta, ssl_ca = config.certificado)
     cursor = cnx.cursor()

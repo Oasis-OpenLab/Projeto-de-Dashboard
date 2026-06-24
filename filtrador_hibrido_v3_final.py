@@ -1,3 +1,12 @@
+"""
+Motor de Busca e Filtragem Híbrida (V3 Final).
+
+Responsável por cruzar as consultas de pesquisa do usuário com o banco de dados local.
+Implementa uma arquitetura em duas fases (Two-Stage Retrieval):
+1. Recuperação Preliminar (Bi-Encoder): Usa Cosine Similarity local para achar candidatos.
+2. Re-ranking (Cross-Encoder): Usa a API da Cohere AI para reordenar os Top K resultados
+   com base no contexto profundo da relação entre a pergunta e o projeto.
+"""
 import json
 import csv
 import os
@@ -12,17 +21,28 @@ import cohere
 import config
 import pandas as pd
 
+# Inicializa o cliente da Cohere usando a chave segura do Streamlit
 co = cohere.Client(config.COHERE_API_KEY)
 
 def aplicar_reranking(query, resultados_preliminares):
     """
-    Refina os Top X resultados usando a IA da Cohere.
-    Analisa a relação real entre a pergunta e o conteúdo da ementa.
+    Refina a ordenação dos melhores candidatos utilizando a IA da Cohere.
+    
+    Cria um prompt enriquecido com a Norma, Ementa e Indexação e submete ao 
+    modelo Rerank da Cohere. Isso corrige casos onde uma busca por palavras tem 
+    alta similaridade matemática, mas baixo sentido prático (falsos positivos).
+
+    Args:
+        query (str): A pesquisa original digitada pelo usuário.
+        resultados_preliminares (list): Dicionário contendo os projetos pré-selecionados.
+
+    Returns:
+        list: Lista de projetos reordenados de acordo com o score de relevância da Cohere.
     """
     if not resultados_preliminares:
         return []
 
-    # --- MUDANÇA AQUI: Criamos um texto enriquecido para a IA ler ---
+    # Criamos um texto enriquecido para a IA ler 
     # Combinamos a Norma, Ementa e Indexação em um único bloco de texto por projeto
     textos_para_analise = [
         f"PROJETO: {r['Norma']} | EMENTA: {r['Ementa']} | PALAVRAS-CHAVE: {r.get('Indexacao', '')}"
@@ -70,16 +90,29 @@ def processar_lote(dados, pkl_data, query_embedding, query_embedding_secundaria,
     Responsabilidades:
 
     1) Carregar ou gerar embeddings das ementas (cache por legislatura).
-
     2) Calcular similaridade semântica entre consulta do usuário e cada ementa.
-
     3) Aplicar reforço (boost) baseado em palavras-chave (híbrido).
-
     4) Calcular score final ponderado.
-
     5) Retornar apenas projetos que ultrapassem o threshold configurado.
 
-    """ 
+    A fórmula do Score Híbrido combina:
+    A) A Média Ponderada da Similaridade do Cosseno entre a query principal e secundária.
+    B) Um Boost (Bônus) de pontuação baseado na correspondência exata de Keywords.
+    
+    Filtra projetos que não atinjam o limite mínimo (Threshold) configurado.
+
+    Args:
+        dados (list): Projetos brutos em formato JSON.
+        pkl_data (dict): Cache de keywords vetorizadas daquela legislatura.
+        query_embedding (Tensor): Vetor matemático da pesquisa principal do usuário.
+        query_embedding_secundaria (Tensor ou None): Vetor da pesquisa secundária.
+        termos_usuario (list): Palavras da pesquisa divididas para busca de match exato.
+        model (SentenceTransformer): Modelo de IA ativo.
+        sufixo_leg (str): Identificador do lote (ex: 'leg56').
+
+    Returns:
+        list: Projetos filtrados e formatados, prontos para exportação/re-ranking.
+    """
     import os
     import config
     from sentence_transformers import util
@@ -200,6 +233,21 @@ def executar_filtragem(consulta_usuario, consulta_secundaria, model):
     """
     Recebe o tema digitado pelo usuário no Streamlit e o modelo de IA já carregado na memória RAM.
     Filtra os 50.000 projetos e gera o CSV atualizado em poucos segundos.
+    Orquestrador principal do Motor de Busca.
+
+    Executa o fluxo completo:
+    1. Vetoriza em tempo real o input do usuário.
+    2. Itera sobre as bases locais (JSON + PKL) filtrando com Cosine Similarity.
+    3. Ordena e envia os 50 melhores (Top K) para o Re-ranking da API Cohere.
+    4. Gera o arquivo CSV final formatado para consumo do Dashboard SQL.
+
+    Args:
+        consulta_usuario (str): Tema principal da pesquisa.
+        consulta_secundaria (str): Tema secundário ou filtro extra da pesquisa.
+        model (SentenceTransformer): O modelo de embeddings já carregado na memória.
+
+    Returns:
+        list: A lista final de dicionários com os resultados refinados.
     """
     print(f"\n--- Iniciando Filtragem Híbrida Dinâmica: '{consulta_usuario}' ---")
     

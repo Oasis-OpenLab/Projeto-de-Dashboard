@@ -1,3 +1,12 @@
+"""
+Orquestrador Principal do Backend (Controlador de Pesquisa).
+
+É o elo entre a interface do usuário (Streamlit) e o processamento pesado.
+Quando acionado, garante que a estrutura de pastas exista e dispara, na ordem correta:
+1. O sub-orquestrador de IA (Pipeline Híbrido).
+2. O script de recriação limpa do Banco de Dados.
+3. O script de inserção dos novos resultados no MySQL.
+"""
 import subprocess
 import os
 import mysql.connector
@@ -6,6 +15,16 @@ import config
 import streamlit as st
 
 def pesquisar():
+    """
+    Controlador mestre que executa o fluxo completo da aplicação (End-to-End).
+
+    Esta função engloba subfunções de utilidade para modularizar o processo:
+    - garantir_estrutura_pastas(): Evita erros de I/O na gravação do CSV.
+    - executar_api(): Roda o motor de Machine Learning.
+    - recriar_banco(): Executa o .sql bruto para formatar as tabelas.
+    - inserir_dados(): Move o CSV processado para as tabelas recém-criadas.
+    """
+    
     # --- CONFIGURAÇÃO GLOBAL DE CAMINHOS ---
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
