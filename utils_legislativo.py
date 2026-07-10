@@ -33,8 +33,7 @@ def limpar_texto_basico(texto):
     return ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn')
 
 def limpar_padroes_regex(texto):
-<<<<<<< Updated upstream
-=======
+
     """
     Remove menções repetitivas a artigos, incisos, parágrafos e datas específicas.
     
@@ -50,7 +49,6 @@ def limpar_padroes_regex(texto):
     # Remove dias e meses (ex: "de 20 de dezembro")
     texto = re.sub(r'\bde\s+\d{1,2}\s+de\s+[a-z]+\b', ' ', texto)
 
->>>>>>> Stashed changes
     texto = re.sub(r'\bde\s+\d{4}\b', ' ', texto) 
     texto = re.sub(r'lei\s+n[ºo°]?\s*[\d\.]+', ' ', texto, flags=re.IGNORECASE)
     texto = re.sub(r'\bart[\.\s]\s*\d+[ºo°]?', ' ', texto, flags=re.IGNORECASE)
