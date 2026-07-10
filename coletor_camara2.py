@@ -263,26 +263,27 @@ def atualizar_historico_tramitacoes():
 
     def baixar_historico_json(id_camara, norma):
         url = f"https://dadosabertos.camara.leg.br/api/v2/proposicoes/{id_camara}/tramitacoes"
-        try:
-            resposta = requests.get(url, timeout=10)
-            if resposta.status_code == 200:
-                dados_api = resposta.json().get('dados', [])
-                dados_ordenados = sorted(dados_api, key=lambda k: k.get('sequencia', 0), reverse=True)
-                
-                lista_tramitacoes_projeto = []
-                for t in dados_ordenados:
-                    lista_tramitacoes_projeto.append({
-                        "data_tramitacao": t.get('dataHora', '')[:10] if t.get('dataHora') else None,
-                        "sequencia": t.get('sequencia'),
-                        "orgao": t.get('siglaOrgao', 'Plenário'),
-                        "descricao_tramitacao": t.get('descricaoTramitacao', 'Sem descrição'),
-                        "situacao_tramitacao": t.get('descricaoSituacao', 'Não informada'),
-                        "apreciacao": t.get('apreciacao', 'Não informada'),
-                        "despacho": t.get('despacho', 'Sem despacho registrado')
-                    })
-                return norma, lista_tramitacoes_projeto
-        except Exception as e:
-            print(f"⚠️ Falha na norma {norma} (ID: {id_camara}): {e}")
+        for tentativa in range(5): # Loop de repetição
+            try:
+                resposta = requests.get(url, timeout=90)
+                if resposta.status_code == 200:
+                    dados_api = resposta.json().get('dados', [])
+                    dados_ordenados = sorted(dados_api, key=lambda k: k.get('sequencia', 0), reverse=True)
+                    
+                    lista_tramitacoes_projeto = []
+                    for t in dados_ordenados:
+                        lista_tramitacoes_projeto.append({
+                            "data_tramitacao": t.get('dataHora', '')[:10] if t.get('dataHora') else None,
+                            "sequencia": t.get('sequencia'),
+                            "orgao": t.get('siglaOrgao', 'Plenário'),
+                            "descricao_tramitacao": t.get('descricaoTramitacao', 'Sem descrição'),
+                            "situacao_tramitacao": t.get('descricaoSituacao', 'Não informada'),
+                            "apreciacao": t.get('apreciacao', 'Não informada'),
+                            "despacho": t.get('despacho', 'Sem despacho registrado')
+                        })
+                    return norma, lista_tramitacoes_projeto
+            except Exception as e:
+                print(f"⚠️ Falha na norma {norma} (ID: {id_camara}): {e}")
         return norma, None
 
     processados = 0
