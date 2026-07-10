@@ -232,16 +232,19 @@ def executar_filtragem(consulta_usuario, consulta_secundaria, model):
             todos_resultados.extend(resultados_lote)
             del dados, pkl, resultados_lote
 
-# 4. Ordenação e Re-ranking
+    # 4. Ordenação e Re-ranking
     # Ordena o que o Bi-Encoder achou (Top K iniciais)
     todos_resultados.sort(key=lambda x: x['raw_score'], reverse=True)
-    
-    # Seleciona os candidatos para a IA Especialista
-    candidatos = todos_resultados[:config.TOP_K_RERANK]
 
-    # Chama a API da Cohere para refinar a ordem
-    print(f"Refinando os {len(candidatos)} melhores com IA Especialista...")
-    resultados_finais = aplicar_reranking(consulta_usuario, candidatos)
+    if config.EXECUTAR_RERANKING:
+        # Recorte para o Top K definido no config.py
+        candidatos = todos_resultados[:config.TOP_K_RERANK]
+        print(f"Refinando os {len(candidatos)} melhores com IA Especialista...")
+        resultados_finais = aplicar_reranking(consulta_usuario, candidatos)
+    else:
+        print("Re-ranking desativado. Mantendo a ordenação do Bi-Encoder.")
+        # Se desativado, o resultado final é a própria lista ordenada pelo Bi-Encoder
+        resultados_finais = todos_resultados
 
     # 5. Preparação para Salvamento
     colunas = [

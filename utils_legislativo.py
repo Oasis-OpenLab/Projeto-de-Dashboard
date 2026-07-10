@@ -14,7 +14,7 @@ STOPWORDS_LEGISLATIVAS = [
     "projeto de lei", "pl", "medida provisória", "mpv", "pec",
     "código penal", "código civil", "estatuto", "constituição federal",
     "decreto-lei", "decreto lei", "lei brasileira", "lei de",
-    "caput", "parágrafo único", "paragrafo unico", "artigo", "inciso"
+    "caput", "parágrafo único", "paragrafo unico", "artigo", "inciso", "altera a", "altera o", "correlatas", "e correlatas", "diretrizes e bases da educacao nacional"
 ]
 
 BLACKLIST_KEYWORDS = {
@@ -33,19 +33,48 @@ def limpar_texto_basico(texto):
     return ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn')
 
 def limpar_padroes_regex(texto):
+<<<<<<< Updated upstream
+=======
+    """
+    Remove menções repetitivas a artigos, incisos, parágrafos e datas específicas.
+    
+    Utiliza expressões regulares para limpar jargões estruturais que não agregam
+    valor semântico ao tema do projeto.
+
+    Args:
+        texto (str): O texto a ser processado com as regex.
+
+    Returns:
+        str: O texto com os padrões legais removidos.
+    """
+    # Remove dias e meses (ex: "de 20 de dezembro")
+    texto = re.sub(r'\bde\s+\d{1,2}\s+de\s+[a-z]+\b', ' ', texto)
+
+>>>>>>> Stashed changes
     texto = re.sub(r'\bde\s+\d{4}\b', ' ', texto) 
     texto = re.sub(r'lei\s+n[ºo°]?\s*[\d\.]+', ' ', texto, flags=re.IGNORECASE)
-    texto = re.sub(r'\bart[\.\s]\s*\d+[ºo°]?', ' ', texto, flags=re.IGNORECASE) 
+    texto = re.sub(r'\bart[\.\s]\s*\d+[ºo°]?', ' ', texto, flags=re.IGNORECASE)
     texto = re.sub(r'§\s*\d+[ºo°]?', ' ', texto)
     texto = re.sub(r'\binciso\s+[ivxlcdm]+\b', ' ', texto, flags=re.IGNORECASE)
+
+    # Limpeza de "Lixo Visual" (Parênteses e vírgulas vazias)
+    texto = re.sub(r'\(\s*\)', ' ', texto)   # Parênteses vazios: ( )
+    texto = re.sub(r'\s+,\s+', ' ', texto)   # Vírgula solta: " , "
+    texto = re.sub(r',\s*,', ',', texto)     # Múltiplas vírgulas juntas: ",,"
     return texto
 
 def limpar_ementa_para_vetorizacao(texto):
     if not texto: return ""
     texto = limpar_texto_basico(texto)
     texto = limpar_padroes_regex(texto)
-    for termo in STOPWORDS_LEGISLATIVAS:
-        texto = texto.replace(termo, " ")
+
+    # Ordena as stopwords da mais longa para a mais curta (Longest Match First)
+    stopwords_ordenadas = sorted(STOPWORDS_LEGISLATIVAS, key=len, reverse=True)
+    
+    for termo in stopwords_ordenadas:
+        # Cria um padrão regex que exige que o termo seja uma palavra isolada
+        padrao = r'\b' + re.escape(termo) + r'\b'
+        texto = re.sub(padrao, ' ', texto)
     return " ".join(texto.split())
 
 def validar_tag(tag):

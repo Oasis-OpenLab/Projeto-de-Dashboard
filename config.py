@@ -13,6 +13,9 @@ import streamlit as st
 # Carrega a chave de forma segura dos segredos do Streamlit
 COHERE_API_KEY = st.secrets["COHERE_API_KEY"]
 
+# INTERRUPTOR DO RERANKING
+EXECUTAR_RERANKING = True # Mude para False para ver apenas os scores do Bi-Encoder
+
 # TOP_K_RERANK: Define quantos projetos o Bi-Encoder enviará para o Re-ranking.
 TOP_K_RERANK = 50
 
@@ -48,9 +51,17 @@ with tempfile.NamedTemporaryFile(delete=False) as tmp:
     tmp.write(cert_content.encode())
     certificado = tmp.name
 
+<<<<<<< Updated upstream
 # --- NOVO: INTERRUPTOR DA API ---
 # True = Conecta na Câmara e baixa projetos novos. False = Usa só o que já tem salvo (Muito mais rápido!)
 ATUALIZAR_BASE_API = False
+=======
+# INTERRUPTOR DA API
+
+# True = Conecta na Câmara e baixa projetos novos. 
+# False = Pula a coleta e usa apenas o cache local (ideal para testes rápidos).
+ATUALIZAR_BASE_API = True
+>>>>>>> Stashed changes
 
 # 3. PESOS E NOTAS DE CORTE DO FILTRO HÍBRIDO
 PESO_SEMANTICO = 0.8
