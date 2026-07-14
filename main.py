@@ -1,13 +1,11 @@
 import streamlit as st
-import pesquisa
+
 import dashboard
 import os
 import glob
 import config
 import time
 
-from embeddings import get_model, gerar_embeddings_para_legislatura
-import coletor_camara2 
 
 st.set_page_config(page_title="Dashboard OASIS", layout="wide")
 st.title("🏛️ Dashboard dos Projetos de Lei - IA OASIS")
@@ -39,6 +37,9 @@ with tab_pesquisa:
 
     if st.button("Filtrar", type="primary", disabled=st.session_state.atualizando_db):
         with st.spinner("Vetorizando pesquisa..."):
+            import pesquisa
+            from embeddings import get_model, gerar_embeddings_para_legislatura
+
             os.makedirs('banco_de_dados_local', exist_ok=True)
             with open('banco_de_dados_local/pesquisa1.txt', 'w', encoding='utf-8') as f:
                 f.write(tema_pesquisa_principal)
@@ -77,6 +78,7 @@ with tab_bd:
         
         try:
             # --- ETAPA 1: COLETA (API -> JSON) ---
+            import coletor_camara2 
             with st.spinner("📡 Conectando à API da Câmara... Buscando novas proposições."):
                 coletor_camara2.executar_coleta_incremental()
             
@@ -122,6 +124,7 @@ with tab_bd:
         status_info = st.empty()
         
         try:
+            import coletor_camara2 
             with st.spinner("🔄 Conectando à API da Câmara para baixar andamentos recentes..."):
                 status_info.info("Baixando e compactando históricos (GZIP)... Pode levar alguns minutos.")
                 
