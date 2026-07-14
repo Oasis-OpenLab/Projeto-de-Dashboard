@@ -3,7 +3,7 @@ torchvision==0.17.2
 torchaudio==2.2.2
 sentence-transformers==2.6.1
 
-numpy
+numpy<2.0.0
 pandas
 requests
 mysql-connector-python
