@@ -27,7 +27,7 @@ import streamlit as st
 COHERE_API_KEY = st.secrets["COHERE_API_KEY"]
 
 # INTERRUPTOR RE-RANKING
-EXECUTAR_RERANKING = True # Mude para False para ver apenas os scores do Bi-Encoder
+EXECUTAR_RERANKING = False # Mude para False para ver apenas os scores do Bi-Encoder
 # TOP_K_RERANK: Define quantos projetos o Bi-Encoder enviará para o Re-ranking.
 TOP_K_RERANK = 50
 

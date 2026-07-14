@@ -14,7 +14,7 @@ STOPWORDS_LEGISLATIVAS = [
     "projeto de lei", "pl", "medida provisória", "mpv", "pec",
     "código penal", "código civil", "estatuto", "constituição federal",
     "decreto-lei", "decreto lei", "lei brasileira", "lei de",
-    "caput", "parágrafo único", "paragrafo unico", "artigo", "inciso", "altera a", "altera o", "correlatas", "e correlatas", "diretrizes e bases da educacao nacional"
+    "caput", "parágrafo único", "paragrafo unico", "artigo", "inciso", "altera a", "altera o", "correlatas", "e correlatas", "diretrizes e bases da"
 ]
 
 BLACKLIST_KEYWORDS = {
