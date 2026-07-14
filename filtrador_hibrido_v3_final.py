@@ -129,6 +129,18 @@ def processar_lote(dados, pkl_data, query_embedding, query_embedding_secundaria,
 
         p = dados[idx]
 
+        #Excluir Arquivados
+        # Verificamos se 'statusProposicao' é um dicionário antes de acessar a descrição
+        status_data = p.get('statusProposicao')
+        if isinstance(status_data, dict):
+            # Convertemos para string e garantimos que não seja None antes de aplicar .lower()
+            situacao_projeto = str(status_data.get('descricaoSituacao') or '').lower()
+        else:
+            situacao_projeto = ''
+            
+        if "arquiv" in situacao_projeto:
+            continue
+
         # ----------------------------
         # BLOCO 4 — BOOST POR KEYWORD
         # ----------------------------
