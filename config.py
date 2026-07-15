@@ -29,7 +29,7 @@ COHERE_API_KEY = st.secrets["COHERE_API_KEY"]
 # INTERRUPTOR RE-RANKING
 EXECUTAR_RERANKING = False # Mude para False para ver apenas os scores do Bi-Encoder
 # TOP_K_RERANK: Define quantos projetos o Bi-Encoder enviará para o Re-ranking.
-TOP_K_RERANK = 50
+TOP_K_RERANK = 150
 
 
 # --- MAPEAMENTO INTELIGENTE DE PASTAS ---
@@ -78,6 +78,6 @@ PESO_SEMANTICO = 0.8
 PESO_QUERY_PRINCIPAL = 0.70  # Peso da primeira query, a mais geral
 PESO_QUERY_SECUNDARIA = 0.30  # Peso da segunda query, mais refinada
 PESO_KEYWORD = 0.2   
-FILTRO_THRESHOLD = 0.35
+FILTRO_THRESHOLD = 0.30
 THRESHOLD_SEMANTICO_MINIMO = 0.30
 THRESHOLD_SEMANTICO_MINIMO_SECUNDARIA = 0.30

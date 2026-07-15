@@ -42,12 +42,23 @@ def aplicar_reranking(query, resultados_preliminares):
     if not resultados_preliminares:
         return []
 
+#passando muito contexto para a cohere
+
     # Criamos um texto enriquecido para a IA ler 
     # Combinamos a Norma, Ementa e Indexação em um único bloco de texto por projeto
     textos_para_analise = [
         f"PROJETO: {r['Norma']} | EMENTA: {r['Ementa']} | PALAVRAS-CHAVE: {r.get('Indexacao', '')}"
         for r in resultados_preliminares
     ]
+
+#passando pouco contexto apra a cohere - ementa limpa
+
+    #textos_para_analise = []
+    #for r in resultados_preliminares:
+        # Aplica a limpeza para remover "Dispõe sobre", "Altera a lei...", etc.
+        #ementa_limpa = limpar_ementa_para_vetorizacao(r['Ementa'])
+        # Enviamos apenas a norma e a ementa limpa; removemos a indexação para evitar ruído
+       # textos_para_analise.append(f"PROJETO: {r['Norma']} | EMENTA: {ementa_limpa}")
     
     try:
         # A chamada da API continua a mesma, mas agora ela recebe muito mais contexto
