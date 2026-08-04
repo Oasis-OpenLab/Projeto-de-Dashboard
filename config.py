@@ -27,9 +27,9 @@ import streamlit as st
 COHERE_API_KEY = st.secrets["COHERE_API_KEY"]
 
 # INTERRUPTOR RE-RANKING
-EXECUTAR_RERANKING = False # Mude para False para ver apenas os scores do Bi-Encoder
+EXECUTAR_RERANKING = True # Mude para False para ver apenas os scores do Bi-Encoder
 # TOP_K_RERANK: Define quantos projetos o Bi-Encoder enviará para o Re-ranking.
-TOP_K_RERANK = 150
+TOP_K_RERANK = 400
 
 
 # --- MAPEAMENTO INTELIGENTE DE PASTAS ---
@@ -74,10 +74,14 @@ with tempfile.NamedTemporaryFile(delete=False) as tmp:
 ATUALIZAR_BASE_API = False
 
 # 3. PESOS E NOTAS DE CORTE DO FILTRO HÍBRIDO
+# Pesos do Termômetro Político (Ajuste Fino de Relevância)
+PESO_SEMANTICO_FINAL = 0.85 # Peso da inteligência de texto (Cohere/Bi-Encoder)
+PESO_POLITICO_FINAL = 0.15  # Peso da tração legislativa (Velocidade + Situação)
+
 PESO_SEMANTICO = 0.8
 PESO_QUERY_PRINCIPAL = 0.70  # Peso da primeira query, a mais geral
 PESO_QUERY_SECUNDARIA = 0.30  # Peso da segunda query, mais refinada
 PESO_KEYWORD = 0.2   
-FILTRO_THRESHOLD = 0.30
+FILTRO_THRESHOLD = 0.0
 THRESHOLD_SEMANTICO_MINIMO = 0.30
 THRESHOLD_SEMANTICO_MINIMO_SECUNDARIA = 0.30

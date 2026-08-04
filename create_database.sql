@@ -32,5 +32,8 @@ CREATE TABLE Projetos
     situacao                VARCHAR(255),
     -- Scores gerados pela Inteligência Artificial (Bi-Encoder e Cross-Encoder)
     score_relevancia        DECIMAL(10,4),
-    metodo VARCHAR(100)
+    metodo VARCHAR(100),
+    score_semantico VARCHAR(20),
+    score_politico VARCHAR(20),
+    boost_keyword VARCHAR(50)
 );

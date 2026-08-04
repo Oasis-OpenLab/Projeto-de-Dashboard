@@ -41,10 +41,24 @@ def atualizar_banco_sql():
 
     # Mapeia Nomes do CSV (Chave) para Nomes do Banco (Valor)
     column_map = {
-        "Norma": "norma", "Descricao da Sigla": "descricao", 'Data de Apresentacao': 'datadeapresentacao',
-        "Autor": "autor", "Partido": "partido", "Ementa": "ementa", "Link Documento PDF": "linkpdf",
-        "Link Página Web": "linkweb", "Indexacao": "indexacao", "Último Estado": "ultimoestado",
-        "Data Último Estado": "dataultimo", "Situação": "situacao", "Score Final": "score_relevancia","Metodo": "metodo", "ID Proposicao": "id_proposicao"
+        "Norma": "norma", 
+        "Descricao da Sigla": "descricao", 
+        "Data de Apresentacao": "datadeapresentacao",
+        "Autor": "autor", 
+        "Partido": "partido", 
+        "Ementa": "ementa", 
+        "Link Documento PDF": "linkpdf",
+        "Link Página Web": "linkweb", 
+        "Indexacao": "indexacao", 
+        "Último Estado": "ultimoestado",
+        "Data Último Estado": "dataultimo", 
+        "Situação": "situacao", 
+        "Score Final": "score_relevancia",
+        "Metodo": "metodo", 
+        "ID Proposicao": "id_proposicao",
+        "Score Semantico (IA)": "score_semantico",
+        "Score Politico (Tracao)": "score_politico",
+        "Boost Keyword": "boost_keyword"
     }
 
     csv_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'projetos_em_csv', 'proposicoes_camara_resumo.csv')
