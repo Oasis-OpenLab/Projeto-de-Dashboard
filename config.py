@@ -74,6 +74,25 @@ with tempfile.NamedTemporaryFile(delete=False) as tmp:
 ATUALIZAR_BASE_API = False
 
 # 3. PESOS E NOTAS DE CORTE DO FILTRO HÍBRIDO
+
+# ==========================================
+# CONTROLES AVANÇADOS DA IA E MOTOR HÍBRIDO
+# ==========================================
+
+# Veto Semântico: Nota mínima mista para o projeto ter direito ao bônus político
+VETO_SEMANTICO_MINIMO = 0.45
+
+# Penalidade Sem Keyword: Quanto a nota de corte sobe se o projeto não tiver a palavra-chave
+PENALIDADE_SEM_KEYWORD = 0.15
+
+# Ensemble Ranking: Distribuição de pesos na nota semântica final (Deve somar 1.0)
+PESO_COHERE_ENSEMBLE = 0.70
+PESO_BIENCODER_ENSEMBLE = 0.30
+
+# Chave Mestra da Tração: Coloque False para testar só a IA (desliga o motor político e economiza processamento)
+HABILITAR_TRACAO_POLITICA = True
+
+
 # Pesos do Termômetro Político (Ajuste Fino de Relevância)
 PESO_SEMANTICO_FINAL = 0.85 # Peso da inteligência de texto (Cohere/Bi-Encoder)
 PESO_POLITICO_FINAL = 0.15  # Peso da tração legislativa (Velocidade + Situação)
@@ -85,3 +104,4 @@ PESO_KEYWORD = 0.2
 FILTRO_THRESHOLD = 0.0
 THRESHOLD_SEMANTICO_MINIMO = 0.30
 THRESHOLD_SEMANTICO_MINIMO_SECUNDARIA = 0.30
+

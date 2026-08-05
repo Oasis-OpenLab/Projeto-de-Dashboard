@@ -52,6 +52,14 @@ with tab_pesquisa:
     with col2:
         tema_pesquisa_secundaria = st.text_input("Tema secundário (opcional):")
 
+    # ---------------------------------------------------------
+    # NOVO: CAMPO DE CONTEXTO GUIADO PELO USUÁRIO
+    # ---------------------------------------------------------
+    contexto_ia = st.text_input(
+        "Direcionamento para a IA Especialista (Opcional):", 
+        help="Ex: 'Quero foco apenas em responsabilização civil' ou 'Busque por regras tributárias'."
+    )
+
     # ==========================================================
     # GATILHO DE PESQUISA (BOTÃO FILTRAR)
     # ==========================================================
@@ -63,7 +71,13 @@ with tab_pesquisa:
                 f.write(tema_pesquisa_principal)
             with open('banco_de_dados_local/pesquisa2.txt', 'w', encoding='utf-8') as f:
                 f.write(tema_pesquisa_secundaria)
-
+            
+            # ---------------------------------------------------------
+            # NOVO: SALVANDO O CONTEXTO PARA O MOTOR LER
+            # ---------------------------------------------------------
+            with open('banco_de_dados_local/pesquisa_contexto.txt', 'w', encoding='utf-8') as f:
+                f.write(contexto_ia)
+                
             # Etapa 2: Limpa o cache de memória do Streamlit e engatilha o motor
             # Limpa o cache para esquecer o CSV antigo
             st.cache_data.clear() 

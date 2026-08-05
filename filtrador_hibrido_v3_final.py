@@ -157,26 +157,18 @@ def aplicar_reranking(query, resultados_preliminares):
             score_politico = projeto.get('Score Politico', 0.0)
 
             # ---------------------------------------------------------
-            # NOVO: O VETO SEMÂNTICO
-            # Se a Cohere der uma nota menor que 45% (0.45), nós zeramos o 
-            # peso político para evitar o "Efeito Carona" de projetos ruins.
-            # ---------------------------------------------------------
-            
-            # ---------------------------------------------------------
-            # NOVO: ENSEMBLE RANKING (MISTURA DE CÉREBROS)
-            # Resgatamos a nota do Bi-Encoder (que carrega o Boost da Keyword)
-            # e misturamos com a nota da Cohere para o melhor dos dois mundos.
+            # NOVO: ENSEMBLE RANKING (MISTURA DE CÉREBROS) PARAMETRIZADO
             # ---------------------------------------------------------
             score_bi_encoder = float(projeto.get('Score Semantico (IA)', 0.0))
-            nota_semantica_mista = (nota_cohere * 0.70) + (score_bi_encoder * 0.30)
+            nota_semantica_mista = (nota_cohere * config.PESO_COHERE_ENSEMBLE) + (score_bi_encoder * config.PESO_BIENCODER_ENSEMBLE)
 
-            # O VETO SEMÂNTICO (agora usa a nota mista mais justa)
-            if nota_semantica_mista < 0.45:
+            # O VETO SEMÂNTICO PARAMETRIZADO
+            if nota_semantica_mista < config.VETO_SEMANTICO_MINIMO:
                 score_politico = 0.0
 
             # CÁLCULO DO SCORE DO PAINEL OASIS (Semântica Mista + Política)
             nota_final = (nota_semantica_mista * config.PESO_SEMANTICO_FINAL) + (score_politico * config.PESO_POLITICO_FINAL)
-            
+
             # Atualizamos o score com a nota de relevância da IA Especialista
             projeto['Score Final'] = f"{nota_final:.4f}"
             projeto['Metodo'] = "IA Especialista (Rerank) + Tração"
@@ -294,8 +286,13 @@ def processar_lote(dados, pkl_data, query_embedding, query_embedding_secundaria,
         if "arquiv" in situacao_projeto:
             continue
 
-        # Calcula a tração legislativa para este projeto específico
-        score_pol = calcular_score_politico(p)
+        # ---------------------------------------------------------
+        # NOVO: CHAVE MESTRA DA TRAÇÃO POLÍTICA (LIGA/DESLIGA)
+        # ---------------------------------------------------------
+        if config.HABILITAR_TRACAO_POLITICA:
+            score_pol = calcular_score_politico(p)
+        else:
+            score_pol = 0.0
 
         # ----------------------------
         # BLOCO 4 — BOOST POR KEYWORD E CORTE DINÂMICO
@@ -319,11 +316,9 @@ def processar_lote(dados, pkl_data, query_embedding, query_embedding_secundaria,
         if termos_encontrados == 0:
             score_kw, boost_ativo = 0.0, "NAO"
             # ---------------------------------------------------------
-            # NOVO: CORTE MAIS RIGOROSO
-            # Se não tem a palavra-chave (Boost = 0), exigimos que a 
-            # similaridade semântica seja 15% maior do que a base normal.
+            # NOVO: CORTE MAIS RIGOROSO (PARAMETRIZADO)
             # ---------------------------------------------------------
-            limite_corte = config.THRESHOLD_SEMANTICO_MINIMO + 0.15
+            limite_corte = config.THRESHOLD_SEMANTICO_MINIMO + config.PENALIDADE_SEM_KEYWORD
         elif termos_encontrados == 1:
             score_kw, boost_ativo = 0.5, "PARCIAL (1 Termo)"
             limite_corte = config.THRESHOLD_SEMANTICO_MINIMO
@@ -387,7 +382,7 @@ def processar_lote(dados, pkl_data, query_embedding, query_embedding_secundaria,
 # ==========================================
 # FUNÇÃO PRINCIPAL CHAMADA PELO DASHBOARD
 # ==========================================
-def executar_filtragem(consulta_usuario, consulta_secundaria, model):
+def executar_filtragem(consulta_usuario, consulta_secundaria, contexto_usuario, model):
     """
     Recebe o tema digitado pelo usuário no Streamlit e o modelo de IA já carregado na memória RAM.
     Filtra os 50.000 projetos e gera o CSV atualizado em poucos segundos.
@@ -488,9 +483,11 @@ if __name__ == "__main__":
     # Recupera os temas salvos temporariamente pelo Streamlit
     caminho_p1 = 'banco_de_dados_local/pesquisa1.txt'
     caminho_p2 = 'banco_de_dados_local/pesquisa2.txt'
+    caminho_contexto = 'banco_de_dados_local/pesquisa_contexto.txt'
     
     tema_principal = ""
     tema_secundario = ""
+    contexto_usuario = ""
     
     if os.path.exists(caminho_p1):
         with open(caminho_p1, 'r', encoding='utf-8') as arquivo:
@@ -500,9 +497,13 @@ if __name__ == "__main__":
         with open(caminho_p2, 'r', encoding='utf-8') as arquivo:
             tema_secundario = arquivo.readline().strip()
             
+    if os.path.exists(caminho_contexto):
+        with open(caminho_contexto, 'r', encoding='utf-8') as arquivo:
+            contexto_usuario = arquivo.readline().strip()
+            
     if tema_principal:
         # Executa o motor completo e gera o novo CSV refinado
-        executar_filtragem(tema_principal, tema_secundario, model)
+        executar_filtragem(tema_principal, tema_secundario, contexto_usuario, model)
     else:
         print("⚠️ Erro: Nenhum tema principal localizado em pesquisa1.txt")
 
