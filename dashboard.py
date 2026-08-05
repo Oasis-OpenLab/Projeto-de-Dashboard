@@ -260,7 +260,6 @@ def rodar_dashboard():
                 "linkpaginaweb": "Link", 
                 "linkdocumentopdf": "Documento PDF"
             }
-            df_exibicao = df_props_filtrado.rename(columns=renomear)
             colunas_mostrar = [c for c in renomear.values() if c in df_exibicao.columns]
             df_exibicao = df_exibicao[colunas_mostrar]
 
@@ -362,13 +361,13 @@ def rodar_dashboard():
                     df_resultado = df_completo[mask].copy()
                     
                     if not df_resultado.empty:
-                        if 'norma' in df_csv_completo.columns and 'score_relevancia' in df_csv_completo.columns:
-                            df_notas = df_csv_completo[['norma', 'score_relevancia']].copy()
+                        if 'norma' in df_csv_completo.columns and 'scorefinal' in df_csv_completo.columns:
+                            df_notas = df_csv_completo[['norma', 'scorefinal']].copy()
                             df_resultado['norma_clean'] = df_resultado['Norma'].str.replace(" ", "").str.lower()
                             df_notas['norma_clean'] = df_notas['norma'].str.replace(" ", "").str.lower()
-                            df_resultado = df_resultado.merge(df_notas[['norma_clean', 'score_relevancia']], on='norma_clean', how='left')
-                            df_resultado['Score'] = df_resultado['score_relevancia'].apply(lambda x: f"{float(x):.4f}" if pd.notnull(x) else "Abaixo do corte")
-                            df_resultado = df_resultado.drop(columns=['norma_clean', 'score_relevancia'])
+                            df_resultado = df_resultado.merge(df_notas[['norma_clean', 'scorefinal']], on='norma_clean', how='left')
+                            df_resultado['Score'] = df_resultado['scorefinal'].apply(lambda x: f"{float(x):.4f}" if pd.notnull(x) else "Abaixo do corte")
+                            df_resultado = df_resultado.drop(columns=['norma_clean', 'scorefinal'])
                         else:
                             df_resultado['Score'] = "Sem score"
 

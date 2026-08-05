@@ -29,8 +29,8 @@ def pesquisar():
             print(f"Pasta já existe: {pasta_csv}")
 
     def executar_api():
-        print("\n>>> [1/4] Executando o Pipeline de IA (acess_api.py)...")
-        script_path = obter_caminho("acess_api.py")
+        print("\n>>> [1/4] Executando o Pipeline de IA...")
+        script_path = obter_caminho("filtrador_hibrido_v3_final.py")
         try:
             subprocess.run([sys.executable, script_path], check=True, cwd=BASE_DIR)
         except subprocess.CalledProcessError:

@@ -95,8 +95,19 @@ def gerar_embeddings_para_legislatura(model, arquivo_json, pbar=None, status_tex
 # ==========================================================
 def get_or_create_embeddings(dados, sufixo_leg, model):
     """
-    Garante que o retorno seja SEMPRE o tensor de embeddings,
-    seja carregando do cache ou gerando um novo.
+    Gerenciador inteligente de Cache de Embeddings.
+
+    Verifica se os vetores da legislatura solicitada já existem no disco.
+    Se sim, carrega e move para a memória/GPU. Se não, dispara a geração,
+    salva e depois carrega.
+
+    Args:
+        dados (list): Lista de dicionários com os projetos de lei.
+        sufixo_leg (str): Identificador da legislatura (ex: 'leg57').
+        model (SentenceTransformer): O modelo de IA em uso.
+
+    Returns:
+        torch.Tensor: Tensor multidimensional com os vetores de todas as ementas daquele lote.
     """
     arquivo_cache = os.path.join(config.PASTA_DADOS, f"cache_ementas_{sufixo_leg}.pkl")
     caminho_json = os.path.join(config.PASTA_DADOS, f"camara_db_{sufixo_leg}.json")
@@ -105,17 +116,16 @@ def get_or_create_embeddings(dados, sufixo_leg, model):
     if os.path.exists(arquivo_cache):
         with open(arquivo_cache, 'rb') as f:
             embeddings = pickle.load(f)
-            # Garante que seja float logo aqui
-            return embeddings.float() if hasattr(embeddings, 'float') else embeddings
+            # Garante que seja float logo aqui E MOVE para o hardware correto
+            return embeddings.float().to(config.dispositivo) if hasattr(embeddings, 'float') else embeddings.to(config.dispositivo)
 
     # 2. Se não existe, gera, salva e DEPOIS retorna o tensor
-    # (Note que aqui chamamos a função de geração)
     gerar_embeddings_para_legislatura(model, caminho_json)
     
     # Após gerar, precisamos ler o que foi salvo para retornar o objeto
     with open(arquivo_cache, 'rb') as f:
         embeddings = pickle.load(f)
-        return embeddings.float()
+        return embeddings.float().to(config.dispositivo)
 
 # ==========================================================
 # 3. Lógica Main (Execução via Terminal)
