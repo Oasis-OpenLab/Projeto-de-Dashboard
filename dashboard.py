@@ -260,6 +260,8 @@ def rodar_dashboard():
                 "linkpaginaweb": "Link", 
                 "linkdocumentopdf": "Documento PDF"
             }
+
+            df_exibicao = df_props_filtrado.rename(columns=renomear)
             colunas_mostrar = [c for c in renomear.values() if c in df_exibicao.columns]
             df_exibicao = df_exibicao[colunas_mostrar]
 
