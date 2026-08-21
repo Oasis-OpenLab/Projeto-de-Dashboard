@@ -118,11 +118,14 @@ def pesquisar():
         # 1. Coleta, Vetoriza e Filtra (Pipeline Híbrido)
         executar_api()
             
-        # 2. Reseta as Tabelas do Banco (Desativado pois já fazemos no insert_data)
-        recriar_banco()
-            
-        # 3. Insere o CSV Limpo no Banco
-        inserir_dados()
+        try:
+            # Tenta rodar no MySQL local
+            recriar_banco()
+            inserir_dados()
+        except Exception as db_erro:
+            # Se falhar (como na Nuvem), ele apenas avisa no log interno e continua!
+            print(f"[AVISO NUVEM] MySQL indisponível. O Dashboard rodará pelo CSV. Erro: {db_erro}")
+        # -------------------------------------------------------
             
     except Exception as e:
-        print(f"Ocorreu um erro fatal na execução principal: {e}")
+        print(f"Ocorreu um erro fatal na execução principal do pipeline: {e}")
