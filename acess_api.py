@@ -27,3 +27,6 @@ if __name__ == "__main__":
     executar_script("filtrador_hibrido_v3_final.py")
     
     print("\n--- IA CONCLUÍDA: DADOS PRONTOS PARA O BANCO SQL ---")
+
+    executar_script("insert_data.py")
+    print("\n--- PIPELINE FINALIZADO COM SUCESSO! ---")

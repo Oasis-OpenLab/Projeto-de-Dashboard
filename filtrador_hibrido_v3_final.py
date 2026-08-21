@@ -344,6 +344,7 @@ def processar_lote(dados, pkl_data, query_embedding, query_embedding_secundaria,
                 "Autor": p.get('autor_principal_nome', 'N/A'),
                 "Partido": p.get('autor_principal_partido', 'N/A'),
                 "Ementa": p.get('ementa', '').strip(),
+                "ID Projeto Mae": str(p.get('uriPropPrincipal')).rstrip('/').split('/')[-1] if p.get('uriPropPrincipal') else "",
                 "Link Documento PDF": p.get('urlInteiroTeor', ''),
                 "Link Página Web": p.get('url_pagina_web_oficial', ''),
                 "Indexacao": p.get('keywords', p.get('indexacao', '')),
@@ -434,9 +435,10 @@ def executar_filtragem(consulta_usuario, consulta_secundaria, contexto_usuario, 
 
     # 5. Preparação para Salvamento
     colunas = [
-        "ID Proposicao", "Norma", "Descricao da Sigla", "Data de Apresentacao", "Autor", "Partido", "Ementa", 
-        "Link Documento PDF", "Link Página Web", "Indexacao", "Último Estado", "Data Último Estado", 
-        "Situação", "Score Final", "Score Semantico (IA)", "Score Politico (Tracao)", "Boost Keyword", "Metodo"
+        "ID Proposicao", "Norma", "ID Projeto Mae", "Descricao da Sigla", "Data de Apresentacao", # <--- MOVIDO PARA CÁ
+        "Autor", "Partido", "Ementa", "Link Documento PDF", "Link Página Web", "Indexacao", 
+        "Último Estado", "Data Último Estado", "Situação", "Score Final", 
+        "Score Semantico (IA)", "Score Politico (Tracao)", "Boost Keyword", "Metodo"
     ]
 
     # Garante que a pasta existe

@@ -119,7 +119,7 @@ def pesquisar():
         executar_api()
             
         # 2. Reseta as Tabelas do Banco (Desativado pois já fazemos no insert_data)
-        # recriar_banco()
+        recriar_banco()
             
         # 3. Insere o CSV Limpo no Banco
         inserir_dados()

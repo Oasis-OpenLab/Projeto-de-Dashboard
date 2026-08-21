@@ -32,6 +32,7 @@ def atualizar_banco_sql():
         "Autor": "autor", 
         "Partido": "partido", 
         "Ementa": "ementa", 
+        "ID Projeto Mae": "id_projeto_mae",
         "Link Documento PDF": "linkpdf",
         "Link Página Web": "linkweb", 
         "Indexacao": "indexacao", 

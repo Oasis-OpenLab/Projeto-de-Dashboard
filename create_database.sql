@@ -25,6 +25,7 @@ CREATE TABLE Projetos
     autor                   TEXT,
     partido                 VARCHAR(50),
     ementa                  TEXT,
+    id_projeto_mae          INT,
     linkpdf                 VARCHAR(255),
     linkweb                 VARCHAR(255),
     indexacao               TEXT,

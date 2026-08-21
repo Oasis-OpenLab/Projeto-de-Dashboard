@@ -27,6 +27,29 @@ def rodar_dashboard():
             df.columns = [str(c).lower().replace(" ", "").replace("ç", "c").replace("ã", "a").replace("á", "a").replace("ú", "u") for c in df.columns]
             return df
         return pd.DataFrame()
+    
+    @st.cache_data
+    def obter_mapa_normas():
+        
+        mapa = {}
+        try:
+            # --- CORREÇÃO: Lendo TODOS os arquivos da Câmara em vez de um só ---
+            padrao = os.path.join(config.PASTA_DADOS, "camara_db_leg*.json")
+            arquivos = glob.glob(padrao)
+            
+            for arquivo in arquivos:
+                if os.path.exists(arquivo):
+                    with open(arquivo, 'r', encoding='utf-8') as f:
+                        dados = json.load(f)
+                        for p in dados:
+                            id_prop = str(p.get('id', ''))
+                            if id_prop:
+                                # Popula o dicionário com IDs de todas as legislaturas
+                                mapa[id_prop] = f"{p.get('siglaTipo', '')} {p.get('numero', '')}/{p.get('ano', '')}"
+            return mapa
+        except Exception as e:
+            print(f"Erro ao criar mapa de normas: {e}")
+            return {}
 
     df_csv_completo = load_data()
 
@@ -246,10 +269,21 @@ def rodar_dashboard():
             elif 'dataultimoestado' in df_props_filtrado.columns:
                 df_props_filtrado = df_props_filtrado.sort_values(by=['dataultimoestado'], ascending=[False])
 
+            # --- LÓGICA: TRADUZINDO O ID PARA A NORMA ---
+            mapa_normas = obter_mapa_normas()
+            if 'idprojetomae' in df_props_filtrado.columns:
+                df_props_filtrado['idprojetomae'] = df_props_filtrado['idprojetomae'].astype(str).str.replace('.0', '', regex=False).str.strip()
+                df_props_filtrado['normaprojetomae'] = df_props_filtrado['idprojetomae'].apply(
+                    lambda x: mapa_normas.get(x, x) if x.lower() not in ['nan', 'none', ''] else ""
+                )
+            # --------------------------------------------
+
             renomear = {
                 "idproposicao": "ID", 
                 "scorefinal": "Relevância (Score)", 
-                "norma": "Norma", 
+                "norma": "Norma",
+                "normaprojetomae": "Projeto Principal", 
+                "idprojetomae": "ID Oculto Mae",
                 "autor": "Autor",
                 "partido": "Partido", 
                 "ementa": "Ementa",
@@ -270,6 +304,13 @@ def rodar_dashboard():
                 st.markdown(f"### 📑 {linha.get('Norma', '')}")
                 st.markdown(f"### **Autor:** {linha.get('Autor', '')} - {linha.get('Partido', '')}")
                 st.caption(f"**Ementa:** {linha.get('Ementa', '')}")
+                id_mae = str(linha.get('ID Oculto Mae', '')).replace('.0', '').strip()
+                norma_mae = linha.get('Projeto Principal', '')
+                
+                if id_mae and id_mae.lower() not in ['nan', 'none', '']:
+                    link_mae = f"https://www.camara.leg.br/proposicoesWeb/fichadetramitacao?idProposicao={id_mae}"
+                    st.warning(f"📎 **Atenção:** Esta proposição tramita apensada ao projeto **{norma_mae}**. [Acesse o Projeto Principal clicando aqui]({link_mae})")
+                
                 st.markdown("---")
                 st.markdown("#### 📍 Situação Atual")
                 st.info(f"**{linha.get('Situação', '')}** — {linha.get('Descrição do Andamento', '')}")
@@ -337,6 +378,7 @@ def rodar_dashboard():
                 df_exibicao,
                 column_config={
                     "ID": None,
+                    "ID Oculto Mae": None,
                     "Link": st.column_config.LinkColumn(), 
                     "Documento PDF": st.column_config.LinkColumn()
                 },

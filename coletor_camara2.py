@@ -97,6 +97,9 @@ def processar_uma_proposicao(prop_id, cache_autores):
             uri_str = dados.get('uri', '')
             dados['url_pagina_web_oficial'] = f"https://www.camara.leg.br/proposicoesWeb/fichadetramitacao?idProposicao={uri_str.rstrip('/').split('/')[-1]}" if uri_str else ""
 
+            uri_principal = dados.get('uriPropPrincipal', '')
+            dados['id_projeto_mae'] = uri_principal.rstrip('/').split('/')[-1] if uri_principal else ""
+            
             autor_nome, autor_partido, coautores = "Desconhecido", "N/A", []
             uri_autores = dados.get('uriAutores')
 
