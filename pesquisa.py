@@ -122,7 +122,7 @@ def pesquisar():
         # recriar_banco()
             
         # 3. Insere o CSV Limpo no Banco
-        inserir_dados()
+        # inserir_dados()
             
     except Exception as e:
         print(f"Ocorreu um erro fatal na execução principal: {e}")
