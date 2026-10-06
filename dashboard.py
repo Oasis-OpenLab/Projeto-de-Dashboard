@@ -12,6 +12,78 @@ import os
 
 import gzip
 
+@st.cache_data
+def load_base_completa():
+    """Lê todos os JSONs brutos da Câmara."""
+    padrao = os.path.join(config.PASTA_DADOS, "camara_db_leg*.json")
+    arquivos = glob.glob(padrao)
+    dados_completos = []
+    for arquivo in arquivos:
+        if os.path.exists(arquivo):
+            with open(arquivo, 'r', encoding='utf-8') as f:
+                dados = json.load(f)
+                for p in dados:
+                    norma = f"{p.get('siglaTipo', '')} {p.get('numero', '')}/{p.get('ano', '')}"
+                    status = p.get('statusProposicao', {})
+                    if not isinstance(status, dict): status = {}
+                    dados_completos.append({
+                        "Norma": norma,
+                        "Data de Apresentação": p.get('dataApresentacao', '')[:10] if p.get('dataApresentacao') else '',
+                        "Autor": p.get('autor_principal_nome', 'Desconhecido'),
+                        "Situação": status.get('descricaoSituacao', 'Desconhecida'),
+                        "Ementa": p.get('ementa', ''),
+                        "Link": p.get('url_pagina_web_oficial', '')
+                    })
+    return pd.DataFrame(dados_completos)
+
+def exibir_busca_global(key_suffix=""):
+    """Renderiza o componente de busca livre na base bruta."""
+    st.subheader("🌐 Busca na Base Completa da Câmara")
+    busca_livre = st.text_input(
+        "🔍 Digite o número da norma, autor ou termo da ementa (Ex: PL 2338/2023):",
+        key=f"busca_livre_{key_suffix}"
+    )
+    
+    if busca_livre:
+        with st.spinner("Buscando na base de dados..."):
+            df_completo = load_base_completa()
+            if not df_completo.empty:
+                termo = busca_livre.lower()
+                mask = (df_completo['Norma'].str.lower().str.contains(termo, na=False) |
+                        df_completo['Ementa'].str.lower().str.contains(termo, na=False) |
+                        df_completo['Autor'].str.lower().str.contains(termo, na=False))
+                df_resultado = df_completo[mask].copy()
+                
+                # Tenta recuperar scores do CSV se a pesquisa por IA já tiver sido rodada
+                csv_file_path = os.path.join("projetos_em_csv", "proposicoes_camara_resumo.csv")
+                if os.path.exists(csv_file_path):
+                    try:
+                        df_csv_completo = pd.read_csv(csv_file_path, delimiter=";")
+                        df_csv_completo.columns = [str(c).lower().replace(" ", "").replace("ç", "c").replace("ã", "a").replace("á", "a").replace("ú", "u") for c in df_csv_completo.columns]
+                        
+                        if 'norma' in df_csv_completo.columns and 'scorefinal' in df_csv_completo.columns:
+                            df_notas = df_csv_completo[['norma', 'scorefinal']].copy()
+                            df_resultado['norma_clean'] = df_resultado['Norma'].str.replace(" ", "").str.lower()
+                            df_notas['norma_clean'] = df_notas['norma'].str.replace(" ", "").str.lower()
+                            df_resultado = df_resultado.merge(df_notas[['norma_clean', 'scorefinal']], on='norma_clean', how='left')
+                            df_resultado['Score'] = df_resultado['scorefinal'].apply(lambda x: f"{float(x):.4f}" if pd.notnull(x) else "Abaixo do corte")
+                            df_resultado = df_resultado.drop(columns=['norma_clean', 'scorefinal'], errors='ignore')
+                        else:
+                            df_resultado['Score'] = "Sem score"
+                    except Exception:
+                        df_resultado['Score'] = "Sem score"
+                else:
+                    df_resultado['Score'] = "Não filtrado por IA"
+
+                cols = ['Norma', 'Score', 'Data de Apresentação', 'Autor', 'Situação', 'Ementa', 'Link']
+                df_resultado = df_resultado[[c for c in cols if c in df_resultado.columns]]
+
+                st.success(f"Encontrados: {len(df_resultado)} projeto(s)")
+                st.dataframe(df_resultado, column_config={"Link": st.column_config.LinkColumn()}, width='stretch', hide_index=True)
+            else:
+                st.error("Nenhum dado bruto encontrado.")
+
+
 def rodar_dashboard():
     # ==============================================
     # 2) CONEXÃO E FUNÇÕES AUXILIARES (PANDAS ONLY)
@@ -70,29 +142,6 @@ def rodar_dashboard():
                 return min_val.date()
         return date(2000, 1, 1)
 
-    @st.cache_data
-    def load_base_completa():
-        """Lê todos os JSONs brutos da Câmara."""
-        padrao = os.path.join(config.PASTA_DADOS, "camara_db_leg*.json")
-        arquivos = glob.glob(padrao)
-        dados_completos = []
-        for arquivo in arquivos:
-            if os.path.exists(arquivo):
-                with open(arquivo, 'r', encoding='utf-8') as f:
-                    dados = json.load(f)
-                    for p in dados:
-                        norma = f"{p.get('siglaTipo', '')} {p.get('numero', '')}/{p.get('ano', '')}"
-                        status = p.get('statusProposicao', {})
-                        if not isinstance(status, dict): status = {}
-                        dados_completos.append({
-                            "Norma": norma,
-                            "Data de Apresentação": p.get('dataApresentacao', '')[:10] if p.get('dataApresentacao') else '',
-                            "Autor": p.get('autor_principal_nome', 'Desconhecido'),
-                            "Situação": status.get('descricaoSituacao', 'Desconhecida'),
-                            "Ementa": p.get('ementa', ''),
-                            "Link": p.get('url_pagina_web_oficial', '')
-                        })
-        return pd.DataFrame(dados_completos)
     
     #@st.cache_data(ttl=300) # Cache de 5 minutos para não travar o banco
     def buscar_tramitacoes_banco(norma):
@@ -391,34 +440,4 @@ def rodar_dashboard():
 
     # --- ABA 3: BUSCA GLOBAL ---
     with tab_busca_global:
-        st.subheader("🌐 Busca na Base Completa da Câmara")
-        busca_livre = st.text_input("🔍 Digite o número da norma (Ex: PL 2338/2023):")
-        
-        if busca_livre:
-            with st.spinner("Buscando..."):
-                df_completo = load_base_completa()
-                if not df_completo.empty:
-                    termo = busca_livre.lower()
-                    mask = (df_completo['Norma'].str.lower().str.contains(termo, na=False) |
-                            df_completo['Ementa'].str.lower().str.contains(termo, na=False) |
-                            df_completo['Autor'].str.lower().str.contains(termo, na=False))
-                    df_resultado = df_completo[mask].copy()
-                    
-                    if not df_resultado.empty:
-                        if 'norma' in df_csv_completo.columns and 'scorefinal' in df_csv_completo.columns:
-                            df_notas = df_csv_completo[['norma', 'scorefinal']].copy()
-                            df_resultado['norma_clean'] = df_resultado['Norma'].str.replace(" ", "").str.lower()
-                            df_notas['norma_clean'] = df_notas['norma'].str.replace(" ", "").str.lower()
-                            df_resultado = df_resultado.merge(df_notas[['norma_clean', 'scorefinal']], on='norma_clean', how='left')
-                            df_resultado['Score'] = df_resultado['scorefinal'].apply(lambda x: f"{float(x):.4f}" if pd.notnull(x) else "Abaixo do corte")
-                            df_resultado = df_resultado.drop(columns=['norma_clean', 'scorefinal'])
-                        else:
-                            df_resultado['Score'] = "Sem score"
-
-                        cols = ['Norma', 'Score', 'Data de Apresentação', 'Autor', 'Situação', 'Ementa', 'Link']
-                        df_resultado = df_resultado[[c for c in cols if c in df_resultado.columns]]
-
-                    st.success(f"Encontrados: {len(df_resultado)}")
-                    st.dataframe(df_resultado, column_config={"Link": st.column_config.LinkColumn()}, width='stretch', hide_index=True)
-                else:
-                    st.error("Nenhum dado bruto encontrado.")
+        exibir_busca_global(key_suffix="dashboard_tab")

@@ -6,7 +6,6 @@ import glob
 import config
 import time
 
-
 st.set_page_config(page_title="Dashboard OASIS", layout="wide")
 st.title("🏛️ Dashboard dos Projetos de Lei - IA OASIS")
 
@@ -22,8 +21,10 @@ tab_pesquisa, tab_bd = st.tabs([
 ])
 
 with tab_pesquisa:
-    st.markdown("---")
-    st.subheader("🧠 Pesquisa Inteligente")
+    # ---------------------------------------------------------
+    # 1) PESQUISA INTELIGENTE (FILTRAGEM POR IA)
+    # ---------------------------------------------------------
+    st.subheader("🧠 Pesquisa Inteligente com IA")
 
     # Bloqueia a pesquisa se o banco estiver sendo atualizado
     if st.session_state.atualizando_db:
@@ -35,15 +36,12 @@ with tab_pesquisa:
     with col2:
         tema_pesquisa_secundaria = st.text_input("Tema secundário (opcional):")
 
-    # ---------------------------------------------------------
-    # NOVO: CAMPO DE CONTEXTO GUIADO PELO USUÁRIO
-    # ---------------------------------------------------------
     contexto_ia = st.text_input(
         "Direcionamento para a IA Especialista (Opcional):", 
         help="Ex: 'Quero foco apenas em responsabilização civil' ou 'Busque por regras tributárias'."
     )
 
-    if st.button("Filtrar", type="primary", disabled=st.session_state.atualizando_db):
+    if st.button("Filtrar com IA", type="primary", disabled=st.session_state.atualizando_db):
         with st.spinner("Vetorizando pesquisa..."):
             import pesquisa
             from embeddings import get_model, gerar_embeddings_para_legislatura
@@ -54,9 +52,6 @@ with tab_pesquisa:
             with open('banco_de_dados_local/pesquisa2.txt', 'w', encoding='utf-8') as f:
                 f.write(tema_pesquisa_secundaria)
                 
-            # ---------------------------------------------------------
-            # NOVO: SALVANDO O CONTEXTO PARA O MOTOR LER
-            # ---------------------------------------------------------
             with open('banco_de_dados_local/pesquisa_contexto.txt', 'w', encoding='utf-8') as f:
                 f.write(contexto_ia)
                 
@@ -69,10 +64,16 @@ with tab_pesquisa:
             # Marca como concluído
             st.session_state.ia_concluida = True
             
-        # O SEGREDO ESTÁ AQUI: Força a página a recarregar imediatamente
-        # Isso garante que o dashboard.py leia o arquivo recém-criado!
         st.rerun()
-        
+
+    st.markdown("---")
+
+    # ---------------------------------------------------------
+    # 2) BUSCA AVULSA E DIRETA (POSICIONADA ABAIXO DO FILTRO)
+    # ---------------------------------------------------------
+    with st.expander("🔍 Busca Avulsa na Base Completa (Pesquisa Direta Sem Filtro)", expanded=True):
+        dashboard.exibir_busca_global(key_suffix="inicio")
+
     st.markdown("---")
 
     if st.session_state.ia_concluida:
@@ -82,21 +83,17 @@ with tab_bd:
     st.subheader(":red[AVISO: Atualização da base de dados com projetos recentes.]")
     st.info("Duração estimada: ~20 minutos. Mantenha esta aba aberta para acompanhar o progresso.")
     
-    # --- BOTÃO 1: ATUALIZAÇÃO COMPLETA (PROJETOS + TRAMITAÇÕES) ---
     if st.button("Iniciar Atualização", type="primary", disabled=st.session_state.atualizando_db):
         st.session_state.atualizando_db = True
         
-        # Containers para feedback em tempo real
         status_info = st.empty()
         barra_progresso = st.progress(0)
         
         try:
-            # --- ETAPA 1: COLETA (API -> JSON) ---
             import coletor_camara2 
             with st.spinner("📡 Conectando à API da Câmara... Buscando novas proposições."):
                 coletor_camara2.executar_coleta_incremental()
             
-            # --- ETAPA 2: VETORIZAÇÃO (JSON -> PKL) ---
             status_info.info("⏳ Inicializando modelo de IA (carregando tensores)...")
             model = get_model()
             
@@ -125,14 +122,10 @@ with tab_bd:
             time.sleep(3) 
             st.rerun()
 
-    # =====================================================================
-    # --- INÍCIO DAS ALTERAÇÕES: NOVO BOTÃO DE ATUALIZAÇÃO RÁPIDA ---
-    # =====================================================================
     st.markdown("---")
     st.subheader("⚡ Atualização Rápida")
     st.info("Use esta opção para atualizar apenas o histórico de andamentos dos projetos já salvos, sem buscar projetos novos. É muito mais rápido.")
     
-    # --- BOTÃO 2: APENAS TRAMITAÇÕES ---
     if st.button("Atualizar APENAS Tramitações", type="secondary", disabled=st.session_state.atualizando_db):
         st.session_state.atualizando_db = True
         status_info = st.empty()
@@ -141,8 +134,6 @@ with tab_bd:
             import coletor_camara2 
             with st.spinner("🔄 Conectando à API da Câmara para baixar andamentos recentes..."):
                 status_info.info("Baixando e compactando históricos (GZIP)... Pode levar alguns minutos.")
-                
-                # Chama DIRETO a função que atualiza só o arquivo GZIP
                 coletor_camara2.atualizar_historico_tramitacoes()
                 
             st.success("✅ Histórico de tramitações atualizado com sucesso!")
