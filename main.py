@@ -5,10 +5,6 @@ import os
 import glob
 import config
 import time
-from sync_manager import SyncManager
-
-# Instancia o gerenciador central
-sync = SyncManager()
 
 st.set_page_config(page_title="Dashboard OASIS", layout="wide")
 st.title("🏛️ Dashboard dos Projetos de Lei - IA OASIS")
@@ -84,72 +80,47 @@ with tab_pesquisa:
         dashboard.rodar_dashboard()
 
 with tab_bd:
-    st.subheader("⚙️ Painel Central de Sincronização de Dados")
-    st.info("Escolha abaixo o nível de atualização desejado para a base de dados.")
+    st.subheader(":red[AVISO: Atualização da base de dados com projetos recentes.]")
+    st.info("Duração estimada: ~20 minutos. Mantenha esta aba aberta para acompanhar o progresso.")
     
-    col1, col2, col3 = st.columns(3)
-
-    # -------------------------------------------------------------------------
-    # OPÇÃO 1: APENAS TRAMITAÇÕES (RÁPIDO)
-    # -------------------------------------------------------------------------
-    with col1:
-        st.markdown("### ⚡ Rápido")
-        st.caption("Atualiza apenas a situação e o histórico de andamento dos projetos já salvos. Não recalcula IA.")
-        if st.button("Atualizar Tramitações", type="secondary", disabled=st.session_state.atualizando_db):
-            st.session_state.atualizando_db = True
-            status_info = st.empty()
-            try:
-                msg = sync.sync_tramitacoes(status_info.info)
-                st.success(msg)
+    if st.button("Iniciar Atualização", type="primary", disabled=st.session_state.atualizando_db):
+        st.session_state.atualizando_db = True
+        
+        status_info = st.empty()
+        barra_progresso = st.progress(0)
+        
+        try:
+            import coletor_camara2 
+            with st.spinner("📡 Conectando à API da Câmara... Buscando novas proposições."):
+                coletor_camara2.executar_coleta_incremental()
+            
+            status_info.info("⏳ Inicializando modelo de IA (carregando tensores)...")
+            model = get_model()
+            
+            padrao_busca = os.path.join(config.PASTA_DADOS, "camara_db_leg*.json")
+            arquivos_json = glob.glob(padrao_busca)
+            
+            if not arquivos_json:
+                st.error(f"Nenhum arquivo JSON encontrado em {config.PASTA_DADOS}")
+            else:
+                for arquivo in arquivos_json:
+                    gerar_embeddings_para_legislatura(
+                        model, 
+                        arquivo, 
+                        pbar=barra_progresso, 
+                        status_text=status_info
+                    )
+                
+                st.success("✅ Atualização TOTAL finalizada com sucesso!")
                 st.balloons()
-            except Exception as e:
-                st.error(f"Erro ao atualizar tramitações: {e}")
-            finally:
-                st.session_state.atualizando_db = False
-                time.sleep(2)
-                st.rerun()
-
-    # -------------------------------------------------------------------------
-    # OPÇÃO 2: INCREMENTAL (NOVOS PROJETOS + VETORES PENDENTES)
-    # -------------------------------------------------------------------------
-    with col2:
-        st.markdown("### 🔍 Incremental")
-        st.caption("Baixa novos projetos apresentados recentemente e vetoriza apenas as novas ementas.")
-        if st.button("Buscar Novos Projetos", type="secondary", disabled=st.session_state.atualizando_db):
-            st.session_state.atualizando_db = True
-            status_info = st.empty()
-            pbar = st.progress(0)
-            try:
-                msg = sync.sync_novos_projetos(pbar, status_info.info)
-                st.success(msg)
-                st.balloons()
-            except Exception as e:
-                st.error(f"Erro na sincronização incremental: {e}")
-            finally:
-                st.session_state.atualizando_db = False
-                time.sleep(2)
-                st.rerun()
-
-    # -------------------------------------------------------------------------
-    # OPÇÃO 3: COMPLETO (SINCRONIZAÇÃO TOTAL)
-    # -------------------------------------------------------------------------
-    with col3:
-        st.markdown("### 🚀 Sincronização Total")
-        st.caption("Executa toda a esteira de atualização (API, Vetores e Históricos) em sequência.")
-        if st.button("Iniciar Atualização Total", type="primary", disabled=st.session_state.atualizando_db):
-            st.session_state.atualizando_db = True
-            status_info = st.empty()
-            pbar = st.progress(0)
-            try:
-                msg = sync.sync_completo(pbar, status_info.info)
-                st.success(msg)
-                st.balloons()
-            except Exception as e:
-                st.error(f"Erro na sincronização total: {e}")
-            finally:
-                st.session_state.atualizando_db = False
-                time.sleep(2)
-                st.rerun()
+        
+        except Exception as e:
+            st.error(f"❌ Erro crítico durante a atualização: {e}")
+        
+        finally:
+            st.session_state.atualizando_db = False
+            time.sleep(3) 
+            st.rerun()
 
     st.markdown("---")
     st.subheader("⚡ Atualização Rápida")
