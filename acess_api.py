@@ -1,32 +1,34 @@
 import sys
 import os
-import subprocess
-import config
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-def executar_script(nome_script):
-    caminho = os.path.join(BASE_DIR, nome_script)
-    print(f"\n>>> Executando {nome_script}...")
-    try:
-        subprocess.run([sys.executable, caminho], check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"[ERRO] Falha em {nome_script}: {e}")
-        sys.exit(1)
+import argparse
+import coletor_camara2
+import embeddings
+import gerador_keywords
 
 if __name__ == "__main__":
-    print("--- INICIANDO PIPELINE DE DADOS EM BLOCOS (SHARDING) ---")
-    
-    # --- NOVA LÓGICA: O INTERRUPTOR ---
-    if config.ATUALIZAR_BASE_API:
-        executar_script("coletor_camara2.py")
-    else:
-        print("\n>>> [PULADO] Coleta da API desativada no config.py. Usando a base local já existente para máxima velocidade.")
-        
-    executar_script("gerador_keywords.py")
-    executar_script("filtrador_hibrido_v3_final.py")
-    
-    print("\n--- IA CONCLUÍDA: DADOS PRONTOS PARA O BANCO SQL ---")
+    parser = argparse.ArgumentParser(description="Pipeline Completo de Atualização da Base de Dados OÁSIS")
+    parser.add_argument(
+        "--modo", 
+        choices=["full", "incremental"], 
+        default="incremental",
+        help="'full' para recriar base inteira do zero ou 'incremental' para atualizar apenas a última legislatura."
+    )
+    args = parser.parse_args()
 
-    executar_script("insert_data.py")
-    print("\n--- PIPELINE FINALIZADO COM SUCESSO! ---")
+    print(f"\n========================================================")
+    print(f"🚀 INICIANDO ATUALIZAÇÃO DA BASE DE DADOS (MODO: {args.modo.upper()})")
+    print(f"========================================================\n")
+
+    # 1. Coleta e Tramitações na API
+    print(">>> 1/3: Coletando projetos e atualizando históricos...")
+    coletor_camara2.executar_coleta_incremental(modo=args.modo)
+
+    # 2. Geração dos Embeddings das Ementas
+    print("\n>>> 2/3: Processando embeddings de ementas...")
+    embeddings.processar_embeddings(modo=args.modo, legislatura="leg57")
+
+    # 3. Geração dos Embeddings de Keywords
+    print("\n>>> 3/3: Processando embeddings de palavras-chave...")
+    gerador_keywords.processar_keywords(modo=args.modo, legislatura="leg57")
+
+    print(f"\n✅ PIPELINE DE ATUALIZAÇÃO DA BASE ({args.modo.upper()}) FINALIZADO COM SUCESSO!\n")

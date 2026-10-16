@@ -39,89 +39,89 @@ def extrair_keywords(dados):
                 if tag: unique_keywords.add(tag)
     return sorted(list(unique_keywords))
 
-if __name__ == "__main__":
-    print(f"Carregando modelo de IA...")
-    # Carrega o modelo de embeddings (ex: SentenceTransformer do HuggingFace)
+# ==================== INÍCIO DAS ALTERAÇÕES: TERMINAL (CLI) E MODO DE EXECUÇÃO ====================
+import argparse
+
+def processar_keywords(modo="incremental", legislatura="leg57"):
+    print("Carregando modelo de IA...", flush=True)
     model = get_model()
 
-    # Busca os JSONs dentro da nova pasta
-    padrao_busca = os.path.join(config.PASTA_DADOS, "camara_db_leg*.json")
-    arquivos_db = glob.glob(padrao_busca)
+    if modo == "incremental":
+        arquivos_db = [os.path.join(config.PASTA_DADOS, f"camara_db_{legislatura}.json")]
+    else:
+        padrao_busca = os.path.join(config.PASTA_DADOS, "camara_db_leg*.json")
+        arquivos_db = glob.glob(padrao_busca)
 
-    # Processa cada legislatura separadamente
     for arquivo in arquivos_db:
+        if not os.path.exists(arquivo):
+            continue
+
         nome_base = os.path.basename(arquivo)
-
-        # Extrai o sufixo da legislatura. Ex: camara_db_leg56.json → leg56
         sufixo = nome_base.replace("camara_db_", "").replace(".json", "")
-
-        # Define nome do arquivo de cache das keywords vetorizadas
         arquivo_pkl = os.path.join(config.PASTA_DADOS, f"keywords_embeddings_{sufixo}.pkl")
 
-        print(f"\nProcessando legislatura: {sufixo}")
+        print(f"\nProcessando keywords da legislatura: {sufixo}", flush=True)
 
-        # Abre e carrega os dados brutos dos projetos de lei
         with open(arquivo, 'r', encoding='utf-8') as f:
             dados = json.load(f)
 
-        # Extrai a lista de palavras-chave (keywords) dos dados carregados
         keywords = extrair_keywords(dados)
-
-        # Se o arquivo não contiver keywords, pula para a próxima legislatura
         if not keywords:
-            print("Nenhuma keyword encontrada. Pulando.")
+            print("Nenhuma keyword encontrada. Pulando.", flush=True)
             continue
 
-        # Flag de controle para decidir se a IA precisa processar os dados
         precisa_atualizar = True
-
-        # 🔹 LÓGICA DE CACHE:
-        # Verifica se já existe um arquivo de embeddings salvo para esta legislatura
-        if os.path.exists(arquivo_pkl):
+        if modo == "incremental" and os.path.exists(arquivo_pkl):
             try:
-                # Carrega o cache existente
                 with open(arquivo_pkl, "rb") as f:
                     cache = pickle.load(f)
-
-                # Validação estrutural rigorosa do cache:
-                # 1. Confirma se o arquivo é um dicionário
-                # 2. Confirma se possui as chaves necessárias
-                # 3. Confirma se a quantidade de keywords no cache é igual à extraída agora
                 if (
                     isinstance(cache, dict)
                     and "keywords_texto" in cache
                     and "keywords_vectors" in cache
                     and len(cache["keywords_texto"]) == len(keywords)
                 ):
-                    print(f"Cache válido para {sufixo}. Pulando vetorização.")
-                    precisa_atualizar = False # Evita rodar a IA desnecessariamente
-
+                    print(f"Cache válido para {sufixo}. Pulando vetorização.", flush=True)
+                    precisa_atualizar = False
             except Exception:
-                # Se o arquivo existir mas estiver quebrado, força a recriação
-                print("Cache corrompido ou inválido. Regerando.")
+                print("Cache corrompido ou inválido. Regerando.", flush=True)
 
-        # Se não houver cache válido, inicia o processamento pesado com a IA
         if precisa_atualizar:
-            print(f"Vetorizando {len(keywords)} tags...")
-
-            # Gera as representações matemáticas (embeddings) das palavras-chave
+            print(f"Vetorizando {len(keywords)} tags...", flush=True)
             embeddings = model.encode(
                 keywords,
-                batch_size=64,           # Processa em lotes para não estourar a memória
-                show_progress_bar=True,  # Mostra a barra de progresso no terminal
-                convert_to_tensor=True   # Mantém os dados no formato otimizado do PyTorch
+                batch_size=64,
+                show_progress_bar=True,
+                convert_to_tensor=True
             )
 
-            # Salva o novo resultado no arquivo de cache (.pkl)
             with open(arquivo_pkl, "wb") as f:
                 pickle.dump(
                     {
                         "keywords_texto": keywords,
-                        # .cpu() move os dados da placa de vídeo (se usada) para a RAM padrão, 
-                        # garantindo que o arquivo salvo possa ser lido em qualquer computador
-                        "keywords_vectors": embeddings.cpu() 
+                        "keywords_vectors": embeddings.cpu()
                     },
                     f
                 )
 
-            print(f"Salvo: {arquivo_pkl}")
+            print(f"Salvo: {arquivo_pkl}", flush=True)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Gerador de Embeddings de Keywords")
+    parser.add_argument(
+        "--modo", 
+        choices=["full", "incremental"], 
+        default="incremental",
+        help="Escolha 'full' para regerar keywords de todas as legislaturas ou 'incremental' para a atual."
+    )
+    parser.add_argument(
+        "--leg", 
+        default="leg57",
+        help="Legislatura a ser processada no modo incremental (padrão: leg57)."
+    )
+    args = parser.parse_args()
+
+    print(f"=== INICIANDO GERADOR DE KEYWORDS (MODO: {args.modo.upper()}) ===", flush=True)
+    processar_keywords(modo=args.modo, legislatura=args.leg)
+# ==================== FIM DAS ALTERAÇÕES: TERMINAL (CLI) E MODO DE EXECUÇÃO ====================

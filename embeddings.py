@@ -130,30 +130,53 @@ def get_or_create_embeddings(dados, sufixo_leg, model):
 # ==========================================================
 # 3. Lógica Main (Execução via Terminal)
 # ==========================================================
-def main():
+
+import argparse
+
+def processar_embeddings(modo="incremental", legislatura="leg57"):
     """
-    Execução padrão quando o script é chamado diretamente (ex: python embeddings.py).
+    Gera embeddings de ementas conforme o modo escolhido.
+    modo = 'incremental': Processa apenas a legislatura especificada (padrão: leg57).
+    modo = 'full': Processa todas as legislaturas encontradas na pasta de dados.
     """
-    print("=== INICIANDO PROCESSAMENTO DE EMBEDDINGS (MODO OFFLINE) ===", flush = True)
-    
     print("Carregando modelo de IA...", flush=True)
     model = get_model()
 
-    # Busca todos os arquivos JSON que seguem o padrão definido
-    padrao_busca = os.path.join(config.PASTA_DADOS, "camara_db_leg*.json")
-    arquivos_json = glob.glob(padrao_busca)
+    if modo == "incremental":
+        caminho_json = os.path.join(config.PASTA_DADOS, f"camara_db_{legislatura}.json")
+        if os.path.exists(caminho_json):
+            gerar_embeddings_para_legislatura(model, caminho_json)
+        else:
+            print(f"⚠️ Arquivo {caminho_json} não encontrado para geração de embeddings.", flush=True)
+    else:
+        padrao_busca = os.path.join(config.PASTA_DADOS, "camara_db_leg*.json")
+        arquivos_json = glob.glob(padrao_busca)
 
-    if not arquivos_json:
-        print(f"Erro: Nenhum arquivo JSON encontrado em {config.PASTA_DADOS}", flush = True)
-        return
+        if not arquivos_json:
+            print(f"Erro: Nenhum arquivo JSON encontrado em {config.PASTA_DADOS}", flush=True)
+            return
 
-    print(f"Encontrados {len(arquivos_json)} arquivo(s). Iniciando loop...", flush = True)
+        print(f"Encontrados {len(arquivos_json)} arquivo(s). Iniciando loop...", flush=True)
+        for arquivo_json in arquivos_json:
+            gerar_embeddings_para_legislatura(model, arquivo_json)
 
-    for arquivo_json in arquivos_json:
-        # Chama a função principal sem os parâmetros de UI (pbar=None, status_text=None)
-        gerar_embeddings_para_legislatura(model, arquivo_json)
+    print("\n✅ Processamento de embeddings de ementas concluído!", flush=True)
 
-    print("\n✅ Todos os arquivos foram processados e indexados!", flush = True)
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Gerador de Embeddings de Ementas")
+    parser.add_argument(
+        "--modo", 
+        choices=["full", "incremental"], 
+        default="incremental",
+        help="Escolha 'full' para re-vetorizar todas as legislaturas ou 'incremental' para processar apenas a atual."
+    )
+    parser.add_argument(
+        "--leg", 
+        default="leg57",
+        help="Legislatura a ser processada no modo incremental (padrão: leg57)."
+    )
+    args = parser.parse_args()
+
+    print(f"=== INICIANDO EMBEDDINGS (MODO: {args.modo.upper()}) ===", flush=True)
+    processar_embeddings(modo=args.modo, legislatura=args.leg)

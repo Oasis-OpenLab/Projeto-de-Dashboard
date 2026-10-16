@@ -162,11 +162,21 @@ def obter_detalhes_e_separar(lista_ids):
     with open(ARQUIVO_CACHE_PARTIDOS, 'w', encoding='utf-8') as f: json.dump(cache_autores, f, ensure_ascii=False)
     return bancos_separados
 
-def atualizar_historico_tramitacoes():
-    """Baixa o histórico de TODOS os projetos locais em paralelo (Multithreading) para o MySQL/JSON."""
-    print("🔄 Iniciando sincronização GLOBAL de históricos em arquivos JSON locais...")
+# ==================== INÍCIO DAS ALTERAÇÕES: HISTÓRICO DE TRAMITAÇÕES ====================
+def atualizar_historico_tramitacoes(apenas_leg_atual=False):
+    """Baixa o histórico de projetos locais em paralelo (Multithreading) para o arquivo JSON GZIP.
     
-    padrao_busca = os.path.join(config.PASTA_DADOS, "camara_db_leg*.json")
+    Se apenas_leg_atual=True, varre apenas os projetos da legislatura mais recente (ex: leg57).
+    """
+    print("🔄 Iniciando sincronização de históricos em arquivos JSON locais...")
+    
+    if apenas_leg_atual:
+        # No modo incremental, busca apenas o JSON da legislatura 57 (ou atual)
+        padrao_busca = os.path.join(config.PASTA_DADOS, "camara_db_leg57.json")
+    else:
+        # No modo full, busca todas as legislaturas
+        padrao_busca = os.path.join(config.PASTA_DADOS, "camara_db_leg*.json")
+        
     arquivos_json = glob.glob(padrao_busca)
     
     projetos_para_atualizar = []
@@ -185,7 +195,7 @@ def atualizar_historico_tramitacoes():
 
     total_projetos = len(projetos_para_atualizar)
     if total_projetos == 0:
-        print("⚠️ Nenhum projeto localizado nos arquivos JSON locais.")
+        print("⚠️ Nenhum projeto localizado nos arquivos JSON selecionados.")
         return
 
     arquivo_historico_json = os.path.join(config.PASTA_DADOS, "camara_tramitacoes_cache.json.gz")
@@ -195,14 +205,14 @@ def atualizar_historico_tramitacoes():
         with gzip.open(arquivo_historico_json, 'rt', encoding='utf-8') as f:
             try:
                 cache_historico_completo = json.load(f)
-            except:
+            except Exception:
                 cache_historico_completo = {}
 
     print(f"🚀 Iniciando download PARALELO (Multithreading) de {total_projetos} históricos para o arquivo JSON GZIP...")
 
     def baixar_historico_json(id_camara, norma):
         url = f"https://dadosabertos.camara.leg.br/api/v2/proposicoes/{id_camara}/tramitacoes"
-        for tentativa in range(5): # Loop de repetição
+        for tentativa in range(5):
             try:
                 resposta = requests.get(url, timeout=90)
                 if resposta.status_code == 200:
@@ -242,29 +252,41 @@ def atualizar_historico_tramitacoes():
     with gzip.open(arquivo_historico_json, 'wt', encoding='utf-8') as f:
         json.dump(cache_historico_completo, f, indent=4, ensure_ascii=False)
 
-    print("✅ Base de dados de históricos completamente populada e congelada em JSON!")
+    print("✅ Base de dados de históricos populada com sucesso!")
+# ==================== FIM DAS ALTERAÇÕES: HISTÓRICO DE TRAMITAÇÕES ====================
 
 # ==========================================================
 # FUNÇÃO DE EXECUÇÃO EXPORTÁVEL (Para uso no Streamlit)
 # ==========================================================
-def executar_coleta_incremental():
+# ==================== INÍCIO DAS ALTERAÇÕES: COLETA E TERMINAL (CLI) ====================
+import argparse
+
+def executar_coleta_incremental(modo="incremental"):
     """
-    Encapsula a lógica de Smart Sync para ser chamada externamente.
+    Executa a coleta de dados da Câmara dos Deputados.
+    
+    Parâmetros:
+      modo = 'incremental': Lê a data da última coleta e traz apenas novidades da última legislatura.
+      modo = 'full': Ignora metadados anteriores, busca tudo a partir de DATA_INICIO_COLETA e sobrescreve.
     """
-    if not os.path.exists(config.PASTA_DADOS): os.makedirs(config.PASTA_DADOS)
+    if not os.path.exists(config.PASTA_DADOS): 
+        os.makedirs(config.PASTA_DADOS)
 
     hoje = datetime.now()
-    data_inicio_busca = config.DATA_INICIO_COLETA
-
-    if os.path.exists(ARQUIVO_METADADOS):
-        with open(ARQUIVO_METADADOS, 'r', encoding='utf-8') as f:
-            meta = json.load(f)
-            if "ultima_coleta" in meta:
-                ultima_data = datetime.strptime(meta["ultima_coleta"], "%Y-%m-%d")
-                data_inicio_busca = ultima_data
-                print(f"\n[CACHE] Sincronização Incremental: Buscando dados novos desde {ultima_data.strftime('%d/%m/%Y')}.", flush = True)
+    
+    if modo == "full":
+        print("\n🧹 [MODO FULL] Reiniciando coleta do zero. Buscando a partir de DATA_INICIO_COLETA...", flush=True)
+        data_inicio_busca = config.DATA_INICIO_COLETA
     else:
-        print(f"\n[CACHE] Primeira execução. Coleta completa a partir de {data_inicio_busca.strftime('%d/%m/%Y')}.")
+        data_inicio_busca = config.DATA_INICIO_COLETA
+        if os.path.exists(ARQUIVO_METADADOS):
+            with open(ARQUIVO_METADADOS, 'r', encoding='utf-8') as f:
+                meta = json.load(f)
+                if "ultima_coleta" in meta:
+                    data_inicio_busca = datetime.strptime(meta["ultima_coleta"], "%Y-%m-%d")
+                    print(f"\n[CACHE] Sincronização Incremental: Buscando dados novos desde {data_inicio_busca.strftime('%d/%m/%Y')}.", flush=True)
+        else:
+            print(f"\n[CACHE] Primeira execução. Coleta a partir de {data_inicio_busca.strftime('%d/%m/%Y')}.", flush=True)
 
     ids = obter_lista_ids(CAMARA_BASE_URL, data_inicio_busca, hoje, TIPOS_DOCUMENTO)
     
@@ -272,38 +294,61 @@ def executar_coleta_incremental():
         novos_dados_separados = obter_detalhes_e_separar(ids)
         
         for leg, projetos_novos in novos_dados_separados.items():
-            nome_arquivo = os.path.join(config.PASTA_DADOS, f"camara_db_{leg}.json")
-            dados_existentes = []
+            # No modo incremental, foca o salvamento estrito/atualização na legislatura atual
+            if modo == "incremental" and leg != "leg57":
+                print(f"-> [INCREMENTAL] Ignorando salvamento para {leg} fora do escopo da legislatura atual.")
+                continue
 
-            if os.path.exists(nome_arquivo):
+            nome_arquivo = os.path.join(config.PASTA_DADOS, f"camara_db_{leg}.json")
+            
+            if modo == "full" or not os.path.exists(nome_arquivo):
+                # No modo FULL, recria/sobrescreve o arquivo JSON do zero
+                with open(nome_arquivo, 'w', encoding='utf-8') as f:
+                    json.dump(projetos_novos, f, indent=4, ensure_ascii=False)
+                print(f"-> Sobrescrito/Criado: {nome_arquivo} ({len(projetos_novos)} projetos).")
+            else:
+                # No modo INCREMENTAL, faz o merge com os dados existentes sem duplicar
+                dados_existentes = []
                 with open(nome_arquivo, 'r', encoding='utf-8') as f:
                     dados_existentes = json.load(f)
 
-            ids_existentes = {p['id'] for p in dados_existentes}
-            projetos_unicos = [p for p in projetos_novos if p['id'] not in ids_existentes]
+                ids_existentes = {p['id'] for p in dados_existentes}
+                projetos_unicos = [p for p in projetos_novos if p['id'] not in ids_existentes]
 
-            if projetos_unicos:
-                dados_existentes.extend(projetos_unicos)
-                with open(nome_arquivo, 'w', encoding='utf-8') as f:
-                    json.dump(dados_existentes, f, indent=4, ensure_ascii=False)
-                print(f"-> Atualizado: {nome_arquivo} (+{len(projetos_unicos)} novos).")
-            else:
-                print(f"-> Nenhum projeto novo para {leg}.")
+                if projetos_unicos:
+                    dados_existentes.extend(projetos_unicos)
+                    with open(nome_arquivo, 'w', encoding='utf-8') as f:
+                        json.dump(dados_existentes, f, indent=4, ensure_ascii=False)
+                    print(f"-> Atualizado: {nome_arquivo} (+{len(projetos_unicos)} novos).")
+                else:
+                    print(f"-> Nenhum projeto novo para {leg}.")
     else:
-        print("-> Nenhum projeto novo encontrado no período.", flush = True)
+        print("-> Nenhum projeto novo encontrado no período.", flush=True)
 
+    # Salva a data atual como a última coleta realizada
     with open(ARQUIVO_METADADOS, 'w', encoding='utf-8') as f:
         json.dump({"ultima_coleta": hoje.strftime("%Y-%m-%d")}, f)
 
-    # NOVO: Dispara a população automática do histórico
+    # Atualiza as tramitações
     try:
-        atualizar_historico_tramitacoes()
+        atualizar_historico_tramitacoes(apenas_leg_atual=(modo == "incremental"))
     except Exception as e:
         print(f"⚠️ Alerta: Não foi possível sincronizar o histórico de andamentos: {e}")
 
 
 # ==========================================================
-# BLOCO DE EXECUÇÃO DIRETA
+# BLOCO DE EXECUÇÃO DIRETA (VIA TERMINAL / CLI)
 # ==========================================================
 if __name__ == "__main__":
-    executar_coleta_incremental()
+    parser = argparse.ArgumentParser(description="Coletor de Dados da API da Câmara dos Deputados")
+    parser.add_argument(
+        "--modo", 
+        choices=["full", "incremental"], 
+        default="incremental",
+        help="Escolha 'full' para recriar a base inteira do zero ou 'incremental' para atualizar apenas a última legislatura/novidades."
+    )
+    args = parser.parse_args()
+    
+    print(f"=== INICIANDO COLETA (MODO: {args.modo.upper()}) ===", flush=True)
+    executar_coleta_incremental(modo=args.modo)
+# ==================== FIM DAS ALTERAÇÕES: COLETA E TERMINAL (CLI) ====================
