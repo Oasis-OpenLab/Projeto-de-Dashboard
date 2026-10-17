@@ -33,7 +33,7 @@ porta = st.secrets["PORTA"]
 # 2. CONFIGURAÇÕES GERAIS DA IA E HARDWARE
 
 # Define o ponto de partida temporal para a coleta na API da Câmara
-DATA_INICIO_COLETA = datetime(2026, 1, 1) 
+DATA_INICIO_COLETA = datetime(2015, 1, 1) 
 
 # Modelo LLM utilizado para gerar os embeddings das ementas
 MODELO_NOME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
